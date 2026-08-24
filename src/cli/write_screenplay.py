@@ -1,0 +1,56 @@
+"""CLI entry point: format a merged screenplay JSON into a screenplay .md via Ornith.
+
+This module is the only place that reads environment variables or resolves default
+paths — everything under src/ is a plain library that takes what it needs as arguments.
+
+Run from the repo root: python -m src.cli.write_screenplay <screenplay_json>
+"""
+
+import json
+import logging
+import os
+import sys
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+from src.screenplay import write_md, write_screenplay
+
+logger = logging.getLogger(__name__)
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+SCREENPLAYS_DIR = REPO_ROOT / "data" / "screenplays"
+DEFAULT_TEMPLATE_PATH = REPO_ROOT / "screenplay_template.md"
+
+
+def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s", datefmt="%H:%M:%S")
+    load_dotenv()
+
+    if len(sys.argv) != 2:
+        raise SystemExit(f"Usage: python -m src.cli.write_screenplay <screenplay_json>")
+
+    json_path = Path(sys.argv[1])
+    if not json_path.exists():
+        json_path = SCREENPLAYS_DIR / json_path
+    if not json_path.exists():
+        raise SystemExit(f"Screenplay JSON not found: {json_path}")
+
+    events = json.loads(json_path.read_text())
+    template = DEFAULT_TEMPLATE_PATH.read_text()
+
+    logger.info("Writing screenplay for: %s", json_path)
+    screenplay_md = write_screenplay(
+        events,
+        template,
+        model_name=os.environ.get("ORNITH_MODEL", "ornith-1.5-255k"),
+    )
+
+    name = json_path.stem.removesuffix(".screenplay")
+    output_path = write_md(screenplay_md, name, SCREENPLAYS_DIR)
+
+    logger.info("Screenplay writing complete: %s", output_path)
+
+
+if __name__ == "__main__":
+    main()

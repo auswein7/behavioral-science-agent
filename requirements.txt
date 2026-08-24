@@ -1,0 +1,5 @@
+av
+Pillow
+whisperx
+python-dotenv
+ollama
