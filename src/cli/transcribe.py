@@ -25,6 +25,10 @@ RAW_VIDEOS_DIR = REPO_ROOT / "data" / "raw_videos"
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "data" / "transcripts"
 
 
+def _optional_int(value: str | None) -> int | None:
+    return int(value) if value else None
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s", datefmt="%H:%M:%S")
     load_dotenv()
@@ -48,6 +52,9 @@ def main() -> None:
         compute_type=os.environ.get("WHISPERX_COMPUTE_TYPE", "int8"),
         whisper_model=os.environ.get("WHISPERX_MODEL", "large-v2"),
         batch_size=int(os.environ.get("WHISPERX_BATCH_SIZE", "16")),
+        num_speakers=_optional_int(os.environ.get("WHISPERX_NUM_SPEAKERS")),
+        min_speakers=_optional_int(os.environ.get("WHISPERX_MIN_SPEAKERS")),
+        max_speakers=_optional_int(os.environ.get("WHISPERX_MAX_SPEAKERS")),
         language=os.environ.get("WHISPERX_LANGUAGE", "en"),
     )
     records = format_segments(result["segments"])

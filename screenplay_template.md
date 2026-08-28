@@ -11,10 +11,17 @@ action-line style. Synthesize consecutive "visual" events into a flowing descrip
 than listing them one by one.]
 
 **SPEAKER_00** *(00:00:03.500)*
+*(sad)*
 > Line of dialogue transcribed from the "speech" events, attributed to the correct speaker.
 
 **SPEAKER_01** *(00:00:07.200)*
 > Next line of dialogue, in order.
+
+[A tone parenthetical like "*(sad)*" above appears on its own line, between the
+speaker/timestamp line and the dialogue, only when that "speech" event's "emotion" field is a
+meaningful, specific tone — not "neutral", "other", unknown, or null. SPEAKER_01's line above
+has no parenthetical because its emotion was "neutral"; omit it in the same way whenever
+emotion doesn't add real direction.]
 
 [Further action description if the visuals change again within this scene, with its own
 timestamp if it marks a meaningful shift.]

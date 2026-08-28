@@ -4,3 +4,5 @@ __pycache__/
 *.py[cod]
 
 .DS_Store
+
+data/raw_videos/

@@ -3,3 +3,8 @@ Pillow
 whisperx
 python-dotenv
 ollama
+
+# Optional: only needed for per-utterance tone/emotion classification
+# (src/cli/classify_tone.py), via emotion2vec+. CPU-friendly, no GPU required.
+funasr
+soundfile

@@ -34,11 +34,18 @@ def main() -> None:
     if not video_path.exists():
         video_path = RAW_VIDEOS_DIR / video_path
 
+    context_raw = os.environ.get("CAPTION_CONTEXT_CAPTIONS", "1").strip()
+    context_captions = None if context_raw.lower() == "all" else int(context_raw)
+    max_dimension_raw = os.environ.get("CAPTION_MAX_DIMENSION", "1280").strip()
+    max_dimension = None if max_dimension_raw.lower() == "none" else int(max_dimension_raw)
+
     logger.info("Starting captioning pipeline for: %s", video_path)
     records = caption_video(
         video_path,
         fps=float(os.environ.get("CAPTION_FPS", "1.0")),
         model_name=os.environ.get("CAPTION_MODEL", "qwen3-vl:8b"),
+        context_captions=context_captions,
+        max_dimension=max_dimension,
     )
     output_path = write_json(records, video_path.stem, DEFAULT_OUTPUT_DIR)
 

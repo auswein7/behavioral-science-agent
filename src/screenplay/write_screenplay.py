@@ -8,21 +8,14 @@ from pathlib import Path
 
 import ollama
 
+from src.prompts import SCREENPLAY_SYSTEM_PROMPT
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL = "ornith-1.5-255k"
 DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parents[2] / "data" / "screenplays"
 
-SYSTEM_PROMPT = (
-    "You are a professional screenwriter. You are given a JSON timeline of a video, made up "
-    "of 'visual' events (what's on screen, at a single timestamp) and 'speech' events "
-    "(transcribed dialogue, with a speaker label and a start/end time range). Combine these "
-    "into a single, well-formatted screenplay in Markdown, following the structure and "
-    "conventions of the template you are given exactly. Every 'speech' event's text must "
-    "appear as a dialogue line, in order, with its timestamp. Do not invent dialogue, "
-    "speakers, or events that are not in the source JSON. Output only the finished Markdown "
-    "screenplay — no commentary before or after it."
-)
+SYSTEM_PROMPT = SCREENPLAY_SYSTEM_PROMPT
 
 
 def _ensure_model_available(model_name: str) -> None:

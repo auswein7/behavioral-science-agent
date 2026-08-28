@@ -1,6 +1,5 @@
 """Flatten WhisperX diarized segments into a clean, per-utterance record for downstream use."""
 
-import csv
 import json
 import logging
 from pathlib import Path
@@ -64,19 +63,5 @@ def write_json(records: list[dict], name: str, output_dir: Path) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / f"{name}.formatted.json"
     output_path.write_text(json.dumps(records, indent=2))
-    logger.info("Wrote %d records to %s", len(records), output_path)
-    return output_path
-
-
-def write_csv(records: list[dict], name: str, output_dir: Path) -> Path:
-    output_dir.mkdir(parents=True, exist_ok=True)
-    output_path = output_dir / f"{name}.formatted.csv"
-
-    fieldnames = ["index", "start", "end", "start_hms", "end_hms", "speaker", "text", "word_count", "avg_word_score"]
-    with output_path.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
-        writer.writeheader()
-        writer.writerows(records)
-
     logger.info("Wrote %d records to %s", len(records), output_path)
     return output_path

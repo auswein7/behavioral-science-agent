@@ -15,7 +15,16 @@ def merge_screenplay(captions: list[dict], transcript: list[dict]) -> list[dict]
 
     Each event has a "type" of "visual" or "speech" plus the fields from its source
     record (renamed to a common "timestamp"/"timestamp_hms" for captions and
-    "start"/"end"/"start_hms"/"end_hms" for transcript utterances).
+    "start"/"end"/"start_hms"/"end_hms" for transcript utterances). `transcript` is
+    expected to be tone-enriched (src/tone/classify_tone.classify_tone output) — each
+    speech event carries an "emotion" field (None if the record wasn't tone-classified).
+    `captions` (src/captioning/caption_video) combines fixed-interval frames and
+    speech-triggered "reaction shot" frames into one chronologically-captioned
+    pass — each visual event carries a "trigger" field ("fixed_interval" or
+    "speech_start") so consumers can tell the two apart, plus a "mentioned_speakers"
+    field (any SPEAKER_NN tags found in the caption text) that write_screenplay's
+    Ornith prompt uses to tell a grounded speaker attribution apart from one it would
+    have to invent.
     """
     events = []
 
@@ -26,6 +35,8 @@ def merge_screenplay(captions: list[dict], transcript: list[dict]) -> list[dict]
                 "timestamp": record["timestamp"],
                 "timestamp_hms": record["timestamp_hms"],
                 "caption": record["caption"],
+                "trigger": record.get("trigger", "fixed_interval"),
+                "mentioned_speakers": record.get("mentioned_speakers", []),
             }
         )
 
@@ -40,6 +51,7 @@ def merge_screenplay(captions: list[dict], transcript: list[dict]) -> list[dict]
                 "end_hms": record["end_hms"],
                 "speaker": record["speaker"],
                 "text": record["text"],
+                "emotion": record.get("emotion"),
             }
         )
 

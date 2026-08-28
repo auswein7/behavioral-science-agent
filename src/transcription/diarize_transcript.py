@@ -18,6 +18,7 @@ def diarize_transcript(
     compute_type: str = "int8",
     whisper_model: str = "large-v2",
     batch_size: int = 16,
+    num_speakers: int | None = None,
     min_speakers: int | None = None,
     max_speakers: int | None = None,
     language: str = "en",
@@ -46,7 +47,9 @@ def diarize_transcript(
 
     # 3. Assign speaker labels
     diarize_model = DiarizationPipeline(token=hf_token, device=device)
-    diarize_segments = diarize_model(audio, min_speakers=min_speakers, max_speakers=max_speakers)
+    diarize_segments = diarize_model(
+        audio, num_speakers=num_speakers, min_speakers=min_speakers, max_speakers=max_speakers
+    )
     result = whisperx.assign_word_speakers(diarize_segments, result)
     logger.info("Diarization complete")
 
