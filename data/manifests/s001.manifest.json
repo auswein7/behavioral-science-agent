@@ -1,0 +1,11 @@
+{
+  "schema_version": "0.1",
+  "session_id": "s001",
+  "source_class": "public_domain",
+  "task_name": "mock_jury_deliberation",
+  "group_size": 8,
+  "expected_speaker_count": 7,
+  "speaker_roles": null,
+  "protocol_ref": null,
+  "notes": "MockTrial_trimmed public-domain YouTube footage (Themis TV mock jury). Speaker count 7 as auto-detected in run 1; 8 people visible on camera, one may not speak in the trimmed span. No confederate."
+}

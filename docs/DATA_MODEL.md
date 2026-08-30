@@ -3,7 +3,11 @@
 Schema version: 0.1 (draft, 2026-08-30; cross-checked against OSU's
 `example_coded.xlsx` same day). Status: agreed shapes for the anonymizer
 deliverables; the coded-row schema (section 4.5) is a placeholder pending the
-OSU codebook. This file is the canonical spec; the Pydantic models
+OSU codebook. Implemented: `src/schemas.py` (all models),
+`src/deliverables/utterance_table.py` (the 4.1 builder + CSV/JSON writers),
+`src/cli/build_utterance_table.py`, tests under `tests/`. Not yet migrated:
+the existing stage writers (3.1-3.4 files still lack the schema_version
+envelope), RunProvenance/ScrubReport emission, and the enforcing gate. This file is the canonical spec; the Pydantic models
 under `src/` must match it, and every persisted artifact carries a
 `schema_version` field naming the version it was written under.
 
