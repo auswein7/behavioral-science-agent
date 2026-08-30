@@ -1,7 +1,8 @@
 """Extract still frames from an MP4 file at a fixed wall-clock rate."""
 
-import av
 from pathlib import Path
+
+import av
 from PIL import Image
 
 
@@ -102,7 +103,7 @@ def load_burst_frames_at(
 
     bursts: list[list[tuple[float, Image.Image]]] = [[] for _ in timestamps]
     for target, image in found.items():
-        for ts_idx, burst_idx in owners_by_target[target]:
+        for ts_idx, _burst_idx in owners_by_target[target]:
             bursts[ts_idx].append((target, image))
     for burst in bursts:
         burst.sort(key=lambda pair: pair[0])

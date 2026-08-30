@@ -11,7 +11,6 @@ needs as arguments.
 Run from the repo root: python -m src.cli.classify_tone <video_filename_or_path> <transcript_json>
 """
 
-import json
 import logging
 import os
 import sys
@@ -19,6 +18,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from src.persist import read_records
 from src.tone import classify_tone, write_json
 from src.video_utils import load_audio_numpy_array
 
@@ -42,7 +42,7 @@ def main() -> None:
     if not transcript_path.exists():
         raise SystemExit(f"Transcript JSON not found: {transcript_path}")
 
-    records = json.loads(transcript_path.read_text())
+    records = read_records(transcript_path)
 
     logger.info("Starting tone classification for: %s", video_path)
     audio = load_audio_numpy_array(video_path)

@@ -5,9 +5,20 @@ Schema version: 0.1 (draft, 2026-08-30; cross-checked against OSU's
 deliverables; the coded-row schema (section 4.5) is a placeholder pending the
 OSU codebook. Implemented: `src/schemas.py` (all models),
 `src/deliverables/utterance_table.py` (the 4.1 builder + CSV/JSON writers),
-`src/cli/build_utterance_table.py`, tests under `tests/`. Not yet migrated:
-the existing stage writers (3.1-3.4 files still lack the schema_version
-envelope), RunProvenance/ScrubReport emission, and the enforcing gate. This file is the canonical spec; the Pydantic models
+`src/cli/build_utterance_table.py`, the deterministic name scrub
+(`src/scrub/name_scrub.py`: spaCy NER, entity-class tokens [NAME]/[ORG]/
+[PLACE]/[GROUP]; the class map narrows when the TODO 2.1 taxonomy decision
+lands), the enforcing gate (`src/scrub/gate.py`: both 4.4 report forms,
+`GateBlockedError` on block, wired into `main.py` and the table CLI), and
+tests under `tests/`. Also implemented (2026-08-30, second pass): the typed
+config loader + startup preflight (`src/config.py`, 2.3), the schema_version
+envelope on every stage record file (`src/persist.py`; legacy bare-list files
+still load), RunProvenance emission with stage timings and prompt digests
+(`main.py`, 4.3), per-artifact ScrubReport emission (4.4), pipeline
+resumability (`main.py --from <stage>`), and the screenplay faithfulness
+checker (`src/cli/check_screenplay.py`). Still pending: SessionManifest wired
+into `main.py` (num_speakers/roles still come from env), and the coded-row
+schema (4.5) awaits the OSU codebook. This file is the canonical spec; the Pydantic models
 under `src/` must match it, and every persisted artifact carries a
 `schema_version` field naming the version it was written under.
 
@@ -211,7 +222,8 @@ Internal form (Tier B, `data/` only): every finding with category, matched
 pattern, artifact, location and verbatim excerpt - what a human reviews to
 clear or fix a run.
 
-Delivered form (Tier C, `<session_id>.scrub_report.json`): the excerpts are
+Delivered form (Tier C, one per gated artifact, `<artifact>.scrub_report.json`
+where the artifact name carries the session prefix): the excerpts are
 deliberately absent, because a report quoting a leak would itself leak.
 
 | field | type | notes |
@@ -313,8 +325,9 @@ session id, and nothing else:
    screenplay for human review.
 3. `<session_id>.provenance.json` - which models, prompts and settings
    produced the artifacts (no content in it).
-4. `<session_id>.scrub_report.json` - the de-identification check record:
-   finding counts by category and the pass decision for each delivered file.
+4. Scrub reports (`<delivered file>.scrub_report.json`, one per delivered
+   file) - the de-identification check record: finding counts by category and
+   the pass decision.
 
 What OSU never receives: video, audio, raw transcripts, captions, internal
 scrub excerpts, or any file whose name or content identifies a participant,

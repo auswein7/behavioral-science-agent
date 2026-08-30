@@ -11,42 +11,10 @@ treat its silence as "nothing obvious", not as proof of a clean transcript.
 """
 
 import logging
-import re
+
+from src.scrub.patterns import iter_findings
 
 logger = logging.getLogger(__name__)
-
-_GENDERED_WORDS_RE = re.compile(
-    r"\b(he|she|him|her|his|hers|man|woman|men|women|boy|girl|guy|lady|gentleman)\b",
-    re.IGNORECASE,
-)
-
-_APPEARANCE_WORDS_RE = re.compile(
-    r"\b(uniform|wearing|wears|dressed|shirt|dress|jacket|coat|hair|hat|haircut|hairstyle|"
-    r"blonde|brunette|redhead|bald|beard|mustache)\b",
-    re.IGNORECASE,
-)
-
-_SPEAKER_TAG_RE = re.compile(r"SPEAKER_\d+")
-_CAPITALIZED_WORD_RE = re.compile(r"\b[A-Z][a-zA-Z]*\b")
-# A capitalized word right after a sentence boundary (start of text, ".", "!", "?", or a
-# blank line) is excluded from the "likely name" check below — ordinary sentence-initial
-# words can't be told apart from names by regex alone, so this trades missing some real
-# leaks at sentence starts for far fewer false positives everywhere else.
-_SENTENCE_INITIAL_RE = re.compile(r"(?:\A|[.!?]\s+|\n\s*\n)\s*([A-Z][a-zA-Z]*)")
-_NAME_ALLOWLIST = {"scene", "speaker"}
-
-
-def _likely_names(text: str) -> list[str]:
-    sentence_initial = {m.group(1) for m in _SENTENCE_INITIAL_RE.finditer(text)}
-    speaker_tags = set(_SPEAKER_TAG_RE.findall(text))
-
-    hits = set()
-    for match in _CAPITALIZED_WORD_RE.finditer(text):
-        word = match.group(0)
-        if word in sentence_initial or word in speaker_tags or word.lower() in _NAME_ALLOWLIST:
-            continue
-        hits.add(word)
-    return sorted(hits)
 
 
 def scrub_check(text: str, label: str) -> list[str]:
@@ -59,17 +27,23 @@ def scrub_check(text: str, label: str) -> list[str]:
     """
     warnings = []
 
-    gendered = sorted({m.group(0).lower() for m in _GENDERED_WORDS_RE.finditer(text)})
+    gendered: set[str] = set()
+    appearance: set[str] = set()
+    names: set[str] = set()
+    for category, term, _position in iter_findings(text):
+        if category == "gendered":
+            gendered.add(term.lower())
+        elif category == "appearance":
+            appearance.add(term.lower())
+        else:
+            names.add(term)
+
     if gendered:
-        warnings.append(f"[{label}] possible gendered language: {', '.join(gendered)}")
-
-    appearance = sorted({m.group(0).lower() for m in _APPEARANCE_WORDS_RE.finditer(text)})
+        warnings.append(f"[{label}] possible gendered language: {', '.join(sorted(gendered))}")
     if appearance:
-        warnings.append(f"[{label}] possible appearance description: {', '.join(appearance)}")
-
-    names = _likely_names(text)
+        warnings.append(f"[{label}] possible appearance description: {', '.join(sorted(appearance))}")
     if names:
-        preview = ", ".join(names[:10])
+        preview = ", ".join(sorted(names)[:10])
         warnings.append(f"[{label}] possible proper names (best-effort, expect false positives): {preview}")
 
     for warning in warnings:

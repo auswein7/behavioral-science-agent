@@ -6,7 +6,6 @@ paths — everything under src/ is a plain library that takes what it needs as a
 Run from the repo root: python -m src.cli.write_screenplay <screenplay_json>
 """
 
-import json
 import logging
 import os
 import sys
@@ -14,6 +13,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from src.persist import read_records
 from src.screenplay import write_md, write_screenplay
 
 logger = logging.getLogger(__name__)
@@ -28,7 +28,7 @@ def main() -> None:
     load_dotenv()
 
     if len(sys.argv) != 2:
-        raise SystemExit(f"Usage: python -m src.cli.write_screenplay <screenplay_json>")
+        raise SystemExit("Usage: python -m src.cli.write_screenplay <screenplay_json>")
 
     json_path = Path(sys.argv[1])
     if not json_path.exists():
@@ -36,7 +36,7 @@ def main() -> None:
     if not json_path.exists():
         raise SystemExit(f"Screenplay JSON not found: {json_path}")
 
-    events = json.loads(json_path.read_text())
+    events = read_records(json_path)
     template = DEFAULT_TEMPLATE_PATH.read_text()
 
     logger.info("Writing screenplay for: %s", json_path)

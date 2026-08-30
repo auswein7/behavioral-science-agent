@@ -1,9 +1,10 @@
 """Flatten WhisperX diarized segments into a clean, per-utterance record for downstream use."""
 
-import json
 import logging
 from pathlib import Path
 from typing import Any
+
+from src.persist import write_records
 
 logger = logging.getLogger(__name__)
 
@@ -25,10 +26,12 @@ def format_segments(segments: list[dict]) -> list[dict]:
         
 
     def _hhmmss(seconds: float) -> str:
-        whole = int(seconds)
+        # Work in whole milliseconds so a fraction that rounds up carries into
+        # the seconds place instead of rendering as ".1000".
+        total_ms = round(seconds * 1000)
+        whole, ms = divmod(total_ms, 1000)
         hh, rem = divmod(whole, 3600)
         mm, ss = divmod(rem, 60)
-        ms = round((seconds - whole) * 1000)
         return f"{hh:02d}:{mm:02d}:{ss:02d}.{ms:03d}"
 
 
@@ -62,6 +65,6 @@ def format_segments(segments: list[dict]) -> list[dict]:
 def write_json(records: list[dict], name: str, output_dir: Path) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / f"{name}.formatted.json"
-    output_path.write_text(json.dumps(records, indent=2))
+    write_records(records, output_path)
     logger.info("Wrote %d records to %s", len(records), output_path)
     return output_path

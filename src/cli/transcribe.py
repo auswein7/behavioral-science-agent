@@ -34,7 +34,7 @@ def main() -> None:
     load_dotenv()
 
     if len(sys.argv) != 2:
-        raise SystemExit(f"Usage: python -m src.cli.transcribe <video_filename_or_path>")
+        raise SystemExit("Usage: python -m src.cli.transcribe <video_filename_or_path>")
     video_path = Path(sys.argv[1])
     if not video_path.exists():
         video_path = RAW_VIDEOS_DIR / video_path

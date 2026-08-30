@@ -10,3 +10,14 @@ data/raw_videos/
 .venv/
 data/runs/
 data/deliverables/
+
+# Generated pipeline outputs are Tier A/B (PII-bearing) and never committed;
+# .gitkeep placeholders stay tracked. Hand-written manifests (data/manifests/)
+# are Tier C metadata and ARE tracked.
+data/gate/
+data/transcripts/*
+!data/transcripts/.gitkeep
+data/captions/*
+!data/captions/.gitkeep
+data/screenplays/*
+!data/screenplays/.gitkeep

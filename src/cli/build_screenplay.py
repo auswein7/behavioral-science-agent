@@ -6,11 +6,11 @@ is a plain library that takes what it needs as arguments.
 Run from the repo root: python -m src.cli.build_screenplay <captions_json> <transcript_json>
 """
 
-import json
 import logging
 import sys
 from pathlib import Path
 
+from src.persist import read_records
 from src.screenplay import merge_screenplay, write_json
 
 logger = logging.getLogger(__name__)
@@ -32,13 +32,13 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s", datefmt="%H:%M:%S")
 
     if len(sys.argv) != 3:
-        raise SystemExit(f"Usage: python -m src.cli.build_screenplay <captions_json> <transcript_json>")
+        raise SystemExit("Usage: python -m src.cli.build_screenplay <captions_json> <transcript_json>")
 
     captions_path = _resolve(sys.argv[1], CAPTIONS_DIR)
     transcript_path = _resolve(sys.argv[2], TRANSCRIPTS_DIR)
 
-    captions = json.loads(captions_path.read_text())
-    transcript = json.loads(transcript_path.read_text())
+    captions = read_records(captions_path)
+    transcript = read_records(transcript_path)
 
     logger.info("Merging %s and %s", captions_path, transcript_path)
     events = merge_screenplay(captions, transcript)

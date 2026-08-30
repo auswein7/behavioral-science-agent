@@ -6,7 +6,6 @@ hundred MB) and runs comfortably on CPU, so it needs no CUDA/MPS-specific handli
 """
 
 import functools
-import json
 import logging
 import os
 import tempfile
@@ -14,6 +13,8 @@ from pathlib import Path
 
 import numpy as np
 import soundfile as sf
+
+from src.persist import write_records
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +57,7 @@ def _classify_clip(model, samples: np.ndarray) -> tuple[str, dict[str, float]] |
     # Labels can come back as bare English ("happy") or bilingual ("生气/angry")
     # depending on model/hub; normalize to the English tag either way.
     labels = [label.split("/")[-1] for label in top["labels"]]
-    scores = {label: round(float(score), 4) for label, score in zip(labels, top["scores"])}
+    scores = {label: round(float(score), 4) for label, score in zip(labels, top["scores"], strict=True)}
     top_label = max(scores, key=scores.get)
     return top_label, scores
 
@@ -104,6 +105,6 @@ def classify_tone(
 def write_json(records: list[dict], name: str, output_dir: Path = DEFAULT_OUTPUT_DIR) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / f"{name}.formatted.tone.json"
-    output_path.write_text(json.dumps(records, indent=2))
+    write_records(records, output_path)
     logger.info("Wrote %d records to %s", len(records), output_path)
     return output_path

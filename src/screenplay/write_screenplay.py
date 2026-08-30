@@ -8,7 +8,9 @@ from pathlib import Path
 
 import ollama
 
+from src.errors import ConfigurationError
 from src.prompts import SCREENPLAY_SYSTEM_PROMPT
+from src.reliability import call_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +24,7 @@ def _ensure_model_available(model_name: str) -> None:
     try:
         local_models = {m.model for m in ollama.list().models}
     except ConnectionError as e:
-        raise ConnectionError(
+        raise ConfigurationError(
             "Could not reach the local Ollama server. Make sure Ollama is installed "
             "and running (https://ollama.com/download), then try again."
         ) from e
@@ -30,18 +32,34 @@ def _ensure_model_available(model_name: str) -> None:
     if any(name == model_name or name.startswith(f"{model_name}:") for name in local_models):
         return
 
-    raise ValueError(
+    raise ConfigurationError(
         f"Model '{model_name}' was not found in your local Ollama models "
         f"(`ollama list`). Ornith is not on the public Ollama registry, so it can't be "
         "pulled automatically — make sure it's been created locally before running this."
     )
 
 
-def write_screenplay(events: list[dict], template: str, model_name: str = DEFAULT_MODEL) -> str:
+def write_screenplay(
+    events: list[dict],
+    template: str,
+    model_name: str = DEFAULT_MODEL,
+    temperature: float = 0.0,
+    seed: int | None = None,
+    num_ctx: int | None = None,
+) -> str:
     """Prompt the orchestrator model to format a timeline of events into a screenplay .md,
     matching the structure of the given template. Returns the generated Markdown text.
+
+    Sampling is deterministic by default (temperature 0; design principle 8) and the
+    options actually sent to Ollama are exactly what the run's provenance records.
     """
     _ensure_model_available(model_name)
+
+    options: dict = {"temperature": temperature}
+    if seed is not None:
+        options["seed"] = seed
+    if num_ctx is not None:
+        options["num_ctx"] = num_ctx
 
     user_prompt = (
         "TEMPLATE (match this structure and formatting exactly):\n\n"
@@ -51,12 +69,16 @@ def write_screenplay(events: list[dict], template: str, model_name: str = DEFAUL
         f"{json.dumps(events, indent=2)}"
     )
 
-    response = ollama.chat(
-        model=model_name,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user_prompt},
-        ],
+    response = call_with_retry(
+        lambda: ollama.chat(
+            model=model_name,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+            options=options,
+        ),
+        description=f"screenplay generation with {model_name}",
     )
     screenplay_md = response.message.content.strip()
     logger.info("Generated screenplay (%d chars) with model %s", len(screenplay_md), model_name)

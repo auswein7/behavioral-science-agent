@@ -86,7 +86,11 @@ def build_utterance_rows(
                 prior_speaker=prior.speaker if prior else NA,
                 role=roles.get(record.speaker, "participant"),
                 tone=normalize_tone(record.emotion),
-                low_confidence=record.avg_word_score < low_confidence_threshold,
+                # A record with no word-level scores at all is flagged too - no
+                # confidence data is itself a reason for a coder to double-check.
+                low_confidence=(
+                    record.avg_word_score is None or record.avg_word_score < low_confidence_threshold
+                ),
                 nonverbal_notes=_nonverbal_notes(record, captions),
             )
         )

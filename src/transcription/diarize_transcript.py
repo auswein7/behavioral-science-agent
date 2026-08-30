@@ -2,7 +2,6 @@
 
 import gc
 import logging
-import warnings
 
 import numpy as np
 import whisperx

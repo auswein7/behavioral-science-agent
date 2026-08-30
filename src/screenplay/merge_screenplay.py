@@ -1,8 +1,9 @@
 """Merge a video-captions JSON and an audio-transcript JSON into one chronological timeline."""
 
-import json
 import logging
 from pathlib import Path
+
+from src.persist import write_records
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +66,6 @@ def merge_screenplay(captions: list[dict], transcript: list[dict]) -> list[dict]
 def write_json(events: list[dict], name: str, output_dir: Path = DEFAULT_OUTPUT_DIR) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / f"{name}.screenplay.json"
-    output_path.write_text(json.dumps(events, indent=2))
+    write_records(events, output_path)
     logger.info("Wrote %d events to %s", len(events), output_path)
     return output_path

@@ -10,20 +10,20 @@ from src.schemas import CaptionRecord, SessionManifest, ToneRecord
 
 
 def tone_record(index: int, start: float, end: float, speaker: str, text: str, **overrides) -> ToneRecord:
-    base = dict(
-        index=index,
-        start=start,
-        end=end,
-        start_hms=f"00:00:{start:06.3f}",
-        end_hms=f"00:00:{end:06.3f}",
-        speaker=speaker,
-        text=text,
-        word_count=len(text.split()),
-        avg_word_score=0.9,
-        low_confidence_words=[],
-        emotion="neutral",
-        emotion_scores={"neutral": 0.9},
-    )
+    base = {
+        "index": index,
+        "start": start,
+        "end": end,
+        "start_hms": f"00:00:{start:06.3f}",
+        "end_hms": f"00:00:{end:06.3f}",
+        "speaker": speaker,
+        "text": text,
+        "word_count": len(text.split()),
+        "avg_word_score": 0.9,
+        "low_confidence_words": [],
+        "emotion": "neutral",
+        "emotion_scores": {"neutral": 0.9},
+    }
     base.update(overrides)
     return ToneRecord.model_validate(base)
 
@@ -45,16 +45,16 @@ TRANSCRIPT = [
 
 CAPTIONS = [
     CaptionRecord.model_validate(
-        dict(index=0, timestamp=1.5, timestamp_hms="00:00:01.500",
-             caption="SPEAKER_00 leans forward.", trigger="speech_start", speech_start=1.0)
+        {"index": 0, "timestamp": 1.5, "timestamp_hms": "00:00:01.500",
+             "caption": "SPEAKER_00 leans forward.", "trigger": "speech_start", "speech_start": 1.0}
     ),
     CaptionRecord.model_validate(
-        dict(index=1, timestamp=2.0, timestamp_hms="00:00:02.000",
-             caption="A participant nods.", trigger="fixed_interval")
+        {"index": 1, "timestamp": 2.0, "timestamp_hms": "00:00:02.000",
+             "caption": "A participant nods.", "trigger": "fixed_interval"}
     ),
     CaptionRecord.model_validate(
-        dict(index=2, timestamp=4.5, timestamp_hms="00:00:04.500",
-             caption="Everyone sits still.", trigger="fixed_interval")
+        {"index": 2, "timestamp": 4.5, "timestamp_hms": "00:00:04.500",
+             "caption": "Everyone sits still.", "trigger": "fixed_interval"}
     ),
 ]
 

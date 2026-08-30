@@ -13,13 +13,13 @@ from src.schemas import (
 
 
 def make_manifest(**overrides) -> SessionManifest:
-    base = dict(
-        session_id="s001",
-        source_class="public_domain",
-        task_name="mock_jury",
-        group_size=8,
-        expected_speaker_count=7,
-    )
+    base = {
+        "session_id": "s001",
+        "source_class": "public_domain",
+        "task_name": "mock_jury",
+        "group_size": 8,
+        "expected_speaker_count": 7,
+    }
     base.update(overrides)
     return SessionManifest(**base)
 
@@ -57,27 +57,27 @@ class TestNormalizeTone:
 class TestIntermediates:
     def test_tone_record_tolerates_extra_fields(self):
         record = ToneRecord.model_validate(
-            dict(
-                index=0,
-                start=0.0,
-                end=1.0,
-                start_hms="00:00:00.000",
-                end_hms="00:00:01.000",
-                speaker="SPEAKER_00",
-                text="hello",
-                word_count=1,
-                avg_word_score=0.9,
-                low_confidence_words=[],
-                emotion="<unk>",
-                emotion_scores={"sad": 0.5},
-                some_future_debug_field=True,
-            )
+            {
+                "index": 0,
+                "start": 0.0,
+                "end": 1.0,
+                "start_hms": "00:00:00.000",
+                "end_hms": "00:00:01.000",
+                "speaker": "SPEAKER_00",
+                "text": "hello",
+                "word_count": 1,
+                "avg_word_score": 0.9,
+                "low_confidence_words": [],
+                "emotion": "<unk>",
+                "emotion_scores": {"sad": 0.5},
+                "some_future_debug_field": True,
+            }
         )
         assert record.emotion == "<unk>"
 
     def test_caption_record_defaults(self):
         record = CaptionRecord.model_validate(
-            dict(index=0, timestamp=1.0, timestamp_hms="00:00:01.000", caption="A person nods.")
+            {"index": 0, "timestamp": 1.0, "timestamp_hms": "00:00:01.000", "caption": "A person nods."}
         )
         assert record.trigger == "fixed_interval"
         assert record.mentioned_speakers == []
@@ -85,22 +85,22 @@ class TestIntermediates:
 
 class TestUtteranceRow:
     def make_row(self, **overrides) -> UtteranceRow:
-        base = dict(
-            document="s001",
-            uid="u001",
-            ord=1,
-            speaker="SPEAKER_00",
-            utterance="hello",
-            time="00:00:00.000",
-            end_time="00:00:01.000",
-            filename="s001.utterances.csv",
-            prior_utterance="NA",
-            prior_speaker="NA",
-            role="participant",
-            tone="unknown",
-            low_confidence=False,
-            nonverbal_notes="",
-        )
+        base = {
+            "document": "s001",
+            "uid": "u001",
+            "ord": 1,
+            "speaker": "SPEAKER_00",
+            "utterance": "hello",
+            "time": "00:00:00.000",
+            "end_time": "00:00:01.000",
+            "filename": "s001.utterances.csv",
+            "prior_utterance": "NA",
+            "prior_speaker": "NA",
+            "role": "participant",
+            "tone": "unknown",
+            "low_confidence": False,
+            "nonverbal_notes": "",
+        }
         base.update(overrides)
         return UtteranceRow(**base)
 

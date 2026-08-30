@@ -1,7 +1,6 @@
 """Caption every sampled frame of a video, tracking what's changed since the previous frame."""
 
 import io
-import json
 import logging
 import re
 from pathlib import Path
@@ -9,12 +8,15 @@ from pathlib import Path
 import ollama
 from PIL import Image
 
+from src.errors import ConfigurationError
+from src.persist import write_records
 from src.prompts import (
     CHANGE_PROMPT,
     FIRST_FRAME_PROMPT,
     SPEECH_START_BURST_CONTINUATION_PROMPT,
     SPEECH_START_PROMPT,
 )
+from src.reliability import call_with_retry
 from src.video_utils.extract_frames import load_burst_frames_at, load_frames
 
 logger = logging.getLogger(__name__)
@@ -30,7 +32,7 @@ def _ensure_model_pulled(model_name: str) -> None:
     try:
         local_models = {m.model for m in ollama.list().models}
     except ConnectionError as e:
-        raise ConnectionError(
+        raise ConfigurationError(
             "Could not reach the local Ollama server. Make sure Ollama is installed "
             "and running (https://ollama.com/download), then try again."
         ) from e
@@ -94,10 +96,20 @@ def _hhmmss(seconds: float) -> str:
     return f"{hh:02d}:{mm:02d}:{ss:02d}.{ms:03d}"
 
 
-def _caption_single(model_name: str, image: Image.Image, prompt: str, max_dimension: int | None = None) -> str:
-    response = ollama.chat(
-        model=model_name,
-        messages=[{"role": "user", "content": prompt, "images": [_image_bytes(image, max_dimension)]}],
+def _caption_single(
+    model_name: str,
+    image: Image.Image,
+    prompt: str,
+    max_dimension: int | None = None,
+    options: dict | None = None,
+) -> str:
+    response = call_with_retry(
+        lambda: ollama.chat(
+            model=model_name,
+            messages=[{"role": "user", "content": prompt, "images": [_image_bytes(image, max_dimension)]}],
+            options=options or {},
+        ),
+        description=f"frame caption with {model_name}",
     )
     return response.message.content.strip()
 
@@ -109,6 +121,7 @@ def _caption_speech_burst(
     outer_context: list[str],
     burst_spacing: float,
     max_dimension: int | None = None,
+    options: dict | None = None,
 ) -> tuple[str, list[str]]:
     """Caption a burst of frames sampled around one utterance's speech-start moment.
 
@@ -135,7 +148,7 @@ def _caption_speech_burst(
             prompt = SPEECH_START_BURST_CONTINUATION_PROMPT.format(
                 speaker=speaker, spacing=burst_spacing, previous_caption=captions[-1]
             )
-        captions.append(_caption_single(model_name, image, prompt, max_dimension))
+        captions.append(_caption_single(model_name, image, prompt, max_dimension, options))
 
     return captions[-1], captions
 
@@ -152,6 +165,10 @@ def caption_video(
     burst_count: int = 1,
     burst_spacing: float = 0.2,
     max_dimension: int | None = 1280,
+    temperature: float = 0.0,
+    seed: int | None = None,
+    checkpoint_path: Path | None = None,
+    checkpoint_every: int = 25,
 ) -> list[dict]:
     """Caption a video in one chronologically-ordered, context-chained pass.
 
@@ -193,9 +210,19 @@ def caption_video(
     consumers, since prompt compliance is probabilistic). Speech-triggered records also
     carry the originating "speech_start" timestamp and, when burst_count > 1, a
     "burst_captions" debug trail of the full per-frame chain.
+
+    Sampling is deterministic by default (temperature 0, design principle 8); the
+    options sent to Ollama match what the run's provenance records. When
+    `checkpoint_path` is set, the records so far are flushed there every
+    `checkpoint_every` captions (principle 6: a multi-hour stage never holds its
+    only copy of the work in memory).
     """
     video_path = Path(video_path)
     _ensure_model_pulled(model_name)
+
+    options: dict = {"temperature": temperature}
+    if seed is not None:
+        options["seed"] = seed
 
     fixed_frames, _ = load_frames(video_path, fps=fps, start_time=start_time, max_frames=max_frames)
     entries = [
@@ -207,7 +234,7 @@ def caption_video(
         targets = [u["start"] + speech_start_offset for u in utterances]
         bursts = load_burst_frames_at(video_path, targets, burst_count=burst_count, burst_spacing=burst_spacing)
 
-        for utterance, target, burst in zip(utterances, targets, bursts):
+        for utterance, target, burst in zip(utterances, targets, bursts, strict=True):
             if not burst:
                 logger.warning(
                     "Speech-start frame at %.2fs (utterance start %.2fs + %.2fs offset) is past "
@@ -245,10 +272,11 @@ def caption_video(
         burst_captions = None
         if entry["trigger"] == "fixed_interval":
             prompt = FIRST_FRAME_PROMPT if not context else _change_prompt(context)
-            caption = _caption_single(model_name, entry["image"], prompt, max_dimension)
+            caption = _caption_single(model_name, entry["image"], prompt, max_dimension, options)
         else:
             caption, burst_captions = _caption_speech_burst(
-                model_name, entry["burst"], entry["speaker"], context, burst_spacing, max_dimension
+                model_name, entry["burst"], entry["speaker"], context, burst_spacing,
+                max_dimension, options,
             )
 
         logger.info("Captioned %s frame %d @ %.2fs: %s", entry["trigger"], i, timestamp, caption)
@@ -269,12 +297,19 @@ def caption_video(
         records.append(record)
         previous_captions.append(caption)
 
+        if checkpoint_path is not None and len(records) % checkpoint_every == 0:
+            write_records(records, checkpoint_path)
+            logger.info("Checkpointed %d caption records to %s", len(records), checkpoint_path)
+
+    if checkpoint_path is not None and records:
+        write_records(records, checkpoint_path)
+
     return records
 
 
 def write_json(records: list[dict], name: str, output_dir: Path = DEFAULT_OUTPUT_DIR) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / f"{name}.captions.json"
-    output_path.write_text(json.dumps(records, indent=2))
+    write_records(records, output_path)
     logger.info("Wrote %d records to %s", len(records), output_path)
     return output_path

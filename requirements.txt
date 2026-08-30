@@ -5,6 +5,10 @@ python-dotenv
 ollama
 pydantic
 
+# Deterministic spoken-name scrub (src/scrub/name_scrub.py). After installing,
+# fetch the fixed local NER model once: python -m spacy download en_core_web_sm
+spacy
+
 # Development: test suite (tests/)
 pytest
 

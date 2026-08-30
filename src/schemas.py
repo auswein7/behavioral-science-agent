@@ -6,7 +6,7 @@ fields so existing stage outputs load unchanged; deliverable (Tier C) models
 forbid them so nothing undeclared can leave the box.
 """
 
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -24,7 +24,7 @@ TONE_LABELS = frozenset(
 )
 
 
-def normalize_tone(emotion: Optional[str]) -> str:
+def normalize_tone(emotion: str | None) -> str:
     """Map a raw classifier label to the closed deliverable set (DATA_MODEL 5.3)."""
     if emotion is None or emotion not in TONE_LABELS:
         return "unknown"
@@ -52,9 +52,9 @@ class SessionManifest(_Deliverable):
     task_name: str
     group_size: int = Field(ge=1)
     expected_speaker_count: int = Field(ge=1)
-    speaker_roles: Optional[dict[str, Role]] = None
-    protocol_ref: Optional[str] = None
-    notes: Optional[str] = None
+    speaker_roles: dict[str, Role] | None = None
+    protocol_ref: str | None = None
+    notes: str | None = None
 
 
 class TranscriptionConfig(_Deliverable):
@@ -63,7 +63,9 @@ class TranscriptionConfig(_Deliverable):
     compute_type: str
     batch_size: int
     language: str
-    num_speakers: Optional[int] = None
+    num_speakers: int | None = None
+    min_speakers: int | None = None
+    max_speakers: int | None = None
 
 
 class ToneConfig(_Deliverable):
@@ -73,8 +75,8 @@ class ToneConfig(_Deliverable):
 class CaptioningConfig(_Deliverable):
     caption_model: str
     fps: float
-    context_captions: Optional[int]
-    max_dimension: Optional[int]
+    context_captions: int | None
+    max_dimension: int | None
     speech_frame_offset: float
     burst_frames: int
     burst_spacing: float
@@ -82,12 +84,12 @@ class CaptioningConfig(_Deliverable):
 
 class ScreenplayConfig(_Deliverable):
     ornith_model: str
-    num_ctx: Optional[int] = None
+    num_ctx: int | None = None
 
 
 class SamplingConfig(_Deliverable):
     temperature: float = 0.0
-    seed: Optional[int] = None
+    seed: int | None = None
 
 
 class RunConfig(_Deliverable):
@@ -113,15 +115,15 @@ class TranscriptRecord(_Internal):
     speaker: str
     text: str
     word_count: int
-    avg_word_score: float
-    low_confidence_words: list[str]
+    avg_word_score: float | None = None
+    low_confidence_words: list[str] = Field(default_factory=list)
 
 
 class ToneRecord(TranscriptRecord):
     """TranscriptRecord plus the tone classification (DATA_MODEL 3.2)."""
 
-    emotion: Optional[str] = None
-    emotion_scores: Optional[dict[str, float]] = None
+    emotion: str | None = None
+    emotion_scores: dict[str, float] | None = None
 
 
 class CaptionRecord(_Internal):
@@ -133,8 +135,8 @@ class CaptionRecord(_Internal):
     caption: str
     trigger: Trigger = "fixed_interval"
     mentioned_speakers: list[str] = Field(default_factory=list)
-    speech_start: Optional[float] = None
-    burst_captions: Optional[list] = None
+    speech_start: float | None = None
+    burst_captions: list | None = None
 
 
 class SpeechEvent(_Internal):
@@ -149,7 +151,7 @@ class SpeechEvent(_Internal):
     end_hms: str
     speaker: str
     text: str
-    emotion: Optional[str] = None
+    emotion: str | None = None
 
 
 class VisualEvent(_Internal):
@@ -192,6 +194,24 @@ class UtteranceRow(_Deliverable):
     nonverbal_notes: str
 
 
+class NameReplacement(_Internal):
+    """One span replaced by the deterministic name scrub. Tier B: carries the name."""
+
+    record_index: int
+    entity: str
+    label: str
+    replacement: str
+
+
+class GateFinding(_Internal):
+    """One internal gate finding (DATA_MODEL 4.4 internal form). Tier B: carries excerpts."""
+
+    category: Literal["gendered", "appearance", "likely_name"]
+    term: str
+    position: int
+    excerpt: str
+
+
 class RunProvenance(_Deliverable):
     """Reproducibility record for one run (DATA_MODEL 4.3)."""
 
@@ -218,5 +238,5 @@ class ScrubReport(_Deliverable):
     artifact: str
     findings_by_category: dict[str, int] = Field(default_factory=dict)
     resolution: ScrubResolution
-    reviewer: Optional[str] = None
+    reviewer: str | None = None
     decided: str
