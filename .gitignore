@@ -6,3 +6,6 @@ __pycache__/
 .DS_Store
 
 data/raw_videos/
+
+.venv/
+data/runs/
