@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.errors import GateBlockedError
+from src.errors import ArtifactError, GateBlockedError
 from src.schemas import ScrubReport
 from src.scrub.gate import evaluate_gate, require_pass, write_findings
 
@@ -21,6 +21,15 @@ class TestEvaluateGate:
         assert not result.blocked
         assert result.findings == []
         require_pass(result)
+
+    def test_empty_artifact_is_typed_error_not_clean(self):
+        # A 0-char artifact trivially has zero findings; it must be refused as
+        # malformed, never ruled "clean" (a context-overflowed model call once
+        # produced exactly this).
+        with pytest.raises(ArtifactError):
+            gate("")
+        with pytest.raises(ArtifactError):
+            gate("   \n\t ")
 
     def test_leaky_text_blocks(self):
         result = gate(LEAKY_TEXT)

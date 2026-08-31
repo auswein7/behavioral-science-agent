@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from src.errors import GateBlockedError
+from src.errors import ArtifactError, GateBlockedError
 from src.schemas import GateFinding, ScrubReport
 from src.scrub.patterns import iter_findings
 
@@ -53,6 +53,14 @@ def evaluate_gate(
     findings it is "blocked" unless `cleared_by` names the human reviewer role
     that examined them (then "cleared_by_review"). Redaction is an upstream
     fix, not something the gate performs."""
+    if not text.strip():
+        # An empty artifact trivially has zero findings; without this check it
+        # would be ruled "clean" (it happened: a 0-char screenplay from a
+        # context-overflowed model call). Malformed input, not a gate decision.
+        raise ArtifactError(
+            f"{artifact} is empty ({len(text)} chars); refusing to gate a "
+            f"blank artifact - the producing stage failed upstream"
+        )
     findings = [
         GateFinding(category=category, term=term, position=position,
                     excerpt=_excerpt(text, position, term))

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import ollama
 
-from src.errors import ConfigurationError
+from src.errors import AdapterError, ConfigurationError
 from src.prompts import SCREENPLAY_SYSTEM_PROMPT
 from src.reliability import call_with_retry
 
@@ -80,7 +80,20 @@ def write_screenplay(
         ),
         description=f"screenplay generation with {model_name}",
     )
-    screenplay_md = response.message.content.strip()
+    screenplay_md = (response.message.content or "").strip()
+    if not screenplay_md:
+        # A reasoning model that runs out of context mid-think returns 200 OK with
+        # empty content (done_reason "length") - a silent empty string here once
+        # produced a 0-char screenplay that sailed through the gate. Principle 6:
+        # a degraded result is a typed error, never a swallowed empty value.
+        raise AdapterError(
+            f"{model_name} returned an empty screenplay "
+            f"(done_reason={getattr(response, 'done_reason', None)!r}, "
+            f"prompt_eval={getattr(response, 'prompt_eval_count', None)}, "
+            f"eval={getattr(response, 'eval_count', None)}); if done_reason is "
+            f"'length', the prompt plus the model's thinking overflowed num_ctx - "
+            f"raise ORNITH_NUM_CTX or shorten the caption stage's output"
+        )
     logger.info("Generated screenplay (%d chars) with model %s", len(screenplay_md), model_name)
     return screenplay_md
 

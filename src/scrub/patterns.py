@@ -17,14 +17,22 @@ APPEARANCE_RE = re.compile(
 
 SPEAKER_TAG_RE = re.compile(r"SPEAKER_\d+")
 CAPITALIZED_WORD_RE = re.compile(r"\b[A-Z][a-zA-Z]*\b")
-# A capitalized word right after a sentence boundary (start of text, ".", "!", "?", or a
-# blank line) is excluded from the "likely name" check - ordinary sentence-initial words
-# can't be told apart from names by regex alone, so this trades missing some real leaks
-# at sentence starts for far fewer false positives everywhere else.
-SENTENCE_INITIAL_RE = re.compile(r"(?:\A|[.!?]\s+|\n\s*\n)\s*([A-Z][a-zA-Z]*)")
-# "na" is the OSU prior-field convention in delivered tables; the last four are
-# the name-scrub's own replacement tokens, which must not re-trigger the gate.
-NAME_ALLOWLIST = {"scene", "speaker", "na", "name", "org", "place", "group"}
+# A capitalized word right after a sentence boundary is excluded from the "likely name"
+# check - ordinary sentence-initial words can't be told apart from names by regex alone,
+# so this trades missing some real leaks at sentence starts for far fewer false
+# positives everywhere else. Boundaries cover Markdown deliverables, where most lines
+# open with decoration rather than prose: any newline (optionally followed by heading /
+# blockquote / emphasis / list markers), a "> " dialogue marker or ": " mid-line, and
+# ordinary end punctuation optionally wrapped in closing emphasis or quotes. Run 3's
+# screenplay produced 88 likely_name findings that were almost all sentence-initial
+# words after "> " markers this regex previously did not treat as boundaries.
+SENTENCE_INITIAL_RE = re.compile(
+    r"(?:\A|[.!?]['\")*_\]]*\s+|\n[\s>#*_\-]*|>\s+|:\s+)['\"(*_\[]*([A-Z][a-zA-Z]*)"
+)
+# "na" is the OSU prior-field convention in delivered tables; "i" is the English
+# first-person pronoun, capitalized at any position; the last four are the
+# name-scrub's own replacement tokens, which must not re-trigger the gate.
+NAME_ALLOWLIST = {"scene", "speaker", "na", "i", "name", "org", "place", "group"}
 
 
 def iter_findings(text: str) -> Iterator[tuple[str, str, int]]:
