@@ -37,10 +37,14 @@ def _change_prompt(previous_captions: list[str]) -> str:
 
 
 def _speech_start_prompt(speaker: str, previous_captions: list[str]) -> str:
-    return SPEECH_START_PROMPT.format(speaker=speaker, previous_captions=_numbered_captions(previous_captions))
+    return SPEECH_START_PROMPT.format(
+        speaker=speaker, previous_captions=_numbered_captions(previous_captions)
+    )
 
 
-def _resize_for_captioning(image: Image.Image, max_dimension: int | None) -> Image.Image:
+def _resize_for_captioning(
+    image: Image.Image, max_dimension: int | None
+) -> Image.Image:
     """Downscale so the image's long edge is at most `max_dimension`, never upscale.
 
     Qwen3-VL's vision tokens scale linearly with pixel count (H*W/1024), and Ollama does
@@ -147,6 +151,7 @@ def caption_video(
     seed: int | None = None,
     checkpoint_path: Path | None = None,
     checkpoint_every: int = 25,
+    model: AbstractChatModel | None = None,
 ) -> list[dict]:
     """Caption a video in one chronologically-ordered, context-chained pass.
 
@@ -194,16 +199,25 @@ def caption_video(
     `checkpoint_path` is set, the records so far are flushed there every
     `checkpoint_every` captions (principle 6: a multi-hour stage never holds its
     only copy of the work in memory).
+
+    Pass `model` to run the stage against any AbstractChatModel backend (a fairlib
+    adapter, a fake in tests); when None, a local OllamaChatModel for `model_name`
+    is constructed as before. The stage never learns which backend it got.
     """
     video_path = Path(video_path)
-    model = OllamaChatModel(model_name, auto_pull=True, description="frame caption")
+    # Injected backend or the default local one; the stage only ever sees the
+    # AbstractChatModel interface (design principle 2).
+    if model is None:
+        model = OllamaChatModel(model_name, auto_pull=True, description="frame caption")
     model.ensure_available()
 
     options: dict = {"temperature": temperature}
     if seed is not None:
         options["seed"] = seed
 
-    fixed_frames, _ = load_frames(video_path, fps=fps, start_time=start_time, max_frames=max_frames)
+    fixed_frames, _ = load_frames(
+        video_path, fps=fps, start_time=start_time, max_frames=max_frames
+    )
     entries = [
         {"timestamp": timestamp, "trigger": "fixed_interval", "image": image}
         for timestamp, image in fixed_frames
@@ -211,20 +225,26 @@ def caption_video(
 
     if utterances:
         targets = [u["start"] + speech_start_offset for u in utterances]
-        bursts = load_burst_frames_at(video_path, targets, burst_count=burst_count, burst_spacing=burst_spacing)
+        bursts = load_burst_frames_at(
+            video_path, targets, burst_count=burst_count, burst_spacing=burst_spacing
+        )
 
         for utterance, target, burst in zip(utterances, targets, bursts, strict=True):
             if not burst:
                 logger.warning(
                     "Speech-start frame at %.2fs (utterance start %.2fs + %.2fs offset) is past "
                     "the end of the video; skipping",
-                    target, utterance["start"], speech_start_offset,
+                    target,
+                    utterance["start"],
+                    speech_start_offset,
                 )
                 continue
             if len(burst) < burst_count:
                 logger.info(
                     "Speech-start burst at %.2fs got %d/%d frames (near end of video)",
-                    target, len(burst), burst_count,
+                    target,
+                    len(burst),
+                    burst_count,
                 )
             entries.append(
                 {
@@ -251,14 +271,23 @@ def caption_video(
         burst_captions = None
         if entry["trigger"] == "fixed_interval":
             prompt = FIRST_FRAME_PROMPT if not context else _change_prompt(context)
-            caption = _caption_single(model, entry["image"], prompt, max_dimension, options)
+            caption = _caption_single(
+                model, entry["image"], prompt, max_dimension, options
+            )
         else:
             caption, burst_captions = _caption_speech_burst(
-                model, entry["burst"], entry["speaker"], context, burst_spacing,
-                max_dimension, options,
+                model,
+                entry["burst"],
+                entry["speaker"],
+                context,
+                burst_spacing,
+                max_dimension,
+                options,
             )
 
-        logger.info("Captioned %s frame %d @ %.2fs: %s", entry["trigger"], i, timestamp, caption)
+        logger.info(
+            "Captioned %s frame %d @ %.2fs: %s", entry["trigger"], i, timestamp, caption
+        )
 
         record = {
             "index": i,
@@ -278,7 +307,9 @@ def caption_video(
 
         if checkpoint_path is not None and len(records) % checkpoint_every == 0:
             write_records(records, checkpoint_path)
-            logger.info("Checkpointed %d caption records to %s", len(records), checkpoint_path)
+            logger.info(
+                "Checkpointed %d caption records to %s", len(records), checkpoint_path
+            )
 
     if checkpoint_path is not None and records:
         write_records(records, checkpoint_path)
@@ -286,7 +317,9 @@ def caption_video(
     return records
 
 
-def write_json(records: list[dict], name: str, output_dir: Path = DEFAULT_OUTPUT_DIR) -> Path:
+def write_json(
+    records: list[dict], name: str, output_dir: Path = DEFAULT_OUTPUT_DIR
+) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / f"{name}.captions.json"
     write_records(records, output_path)
