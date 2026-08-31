@@ -62,24 +62,38 @@ ANONYMIZATION_RULES = (
 # cases for materially lower per-frame latency. write_screenplay is called once per video,
 # not once per frame, so it keeps the full block.
 CAPTION_ANONYMIZATION_RULES = (
-    "De-identification rules — strict, even if you're confident who or what this is:\n"
-    "Never state or guess a name (person, show, film, public figure); never state or imply "
-    "gender (no he/she/him/her/his/hers/man/woman/boy/girl/guy — use they/them, an established "
-    "SPEAKER_NN tag, or a neutral label); never describe appearance (clothing including "
-    "uniforms/costumes, hair, build, age, ethnicity); never read on-screen text or signage.\n"
-    "Describe behavior as movement — posture, gesture, facial expression as action — plus "
-    "gaze/orientation and turn-taking cues (leaning in, opening their mouth, raising a hand). "
-    "Keep reusing an already-established SPEAKER_NN tag exactly; for anyone without one, use "
-    "one stable position-only label (\"the person on the left\") and reuse it exactly if they "
-    "reappear, rather than inventing a new descriptor each time."
+    "De-identification rules - strict, even if you are confident who or what this is. "
+    "Your caption is checked mechanically; one violating word fails the whole caption.\n"
+    "HOW TO REFER TO PEOPLE: an established SPEAKER_NN tag (reused exactly), or a stable "
+    "position-only label (\"the person on the far left\", \"the person at the head of the "
+    "table\") reused exactly when they reappear. These are the ONLY two ways to refer to a "
+    "person. Referring to anyone by clothing, hair, body, age, or gender is a violation: "
+    "\"the person in the blue shirt\" and \"the woman\" both fail; \"the person second from "
+    "the left\" is correct.\n"
+    "NEVER: state or guess a name (person, show, film, public figure); use a gendered word "
+    "(he/she/him/her/his/hers/man/woman/boy/girl/guy/lady - use they/them); mention clothing, "
+    "uniforms, hair, build, age, or ethnicity at all, even in passing; read or describe "
+    "on-screen text or signage.\n"
+    "DESCRIBE: behavior as movement (posture, gesture, facial expression as an action), "
+    "gaze/orientation (who looks at or turns toward whom), and turn-taking cues (leaning in, "
+    "opening their mouth, raising a hand). This is a single still frame: report hand and "
+    "body positions you can actually see (\"hands pressed together in front of the chest\") "
+    "and do not infer repeated motions such as clapping, nodding, or waving from one frame.\n"
+    "LENGTH: at most three short sentences, covering only what matters. No closing summary "
+    "sentence about the group or the room."
 )
 
 # --- caption_video (Qwen3-VL, via Ollama) ---
 
 FIRST_FRAME_PROMPT = (
     CAPTION_ANONYMIZATION_RULES + "\n\n"
-    "Describe what is happening in this image: who is doing what, their body language and "
-    "gaze, and how any people present are positioned relative to each other."
+    "This is the first frame of the video, so no one has a label yet. First, silently "
+    "assign every visible person a position-only label (\"the person on the far left\", "
+    "\"the person at the head of the table\", ...) - these exact labels will be reused for "
+    "the whole video, so they must contain no clothing, hair, gender, or other appearance "
+    "words. Then describe what is happening: who is doing what, their body language and "
+    "gaze, and how the people are positioned relative to each other, referring to each "
+    "person only by their assigned label."
 )
 
 CHANGE_PROMPT = (
@@ -89,7 +103,8 @@ CHANGE_PROMPT = (
     "{previous_captions}\n\n"
     "Describe what is happening in this new frame, focusing on what has changed "
     "since the most recent one — movement, gaze, gesture, new or departed people, or a "
-    "change in who's positioned where. If nothing meaningful has changed, say so briefly."
+    "change in who's positioned where. If nothing meaningful has changed, reply with "
+    "exactly: No meaningful change."
 )
 
 # --- caption_video speech-start bursts (Qwen3-VL, via Ollama) ---

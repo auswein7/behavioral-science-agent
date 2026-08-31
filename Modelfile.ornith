@@ -1,2 +1,2 @@
 FROM hf.co/ornith-ai/Ornith-1.5-35B-A3B-GGUF:Q8_0
-PARAMETER num_ctx 131072
+PARAMETER num_ctx 262144
