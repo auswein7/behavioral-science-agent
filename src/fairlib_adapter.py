@@ -38,10 +38,11 @@ class FairlibChatAdapter(Protocol):
     def get_model_capabilities(self) -> dict: ...
 
 
-def _fairlib_symbols() -> tuple[type, type[Exception]]:
+def _fairlib_symbols() -> tuple[type, type[Exception], type[Exception]]:
     """Resolve fairlib types lazily so the dependency stays optional."""
     try:
         from fairlib.core.errors import AdapterError as FairlibAdapterError
+        from fairlib.core.errors import ConfigurationError as FairlibConfigurationError
         from fairlib.core.message import Message
     except ImportError as e:
         raise ConfigurationError(
@@ -50,7 +51,7 @@ def _fairlib_symbols() -> tuple[type, type[Exception]]:
             "until it ships, install the in-flight branch with "
             "pip install -e <fair_llm checkout>."
         ) from e
-    return Message, FairlibAdapterError
+    return Message, FairlibAdapterError, FairlibConfigurationError
 
 
 class FairlibChatModel(AbstractChatModel):
@@ -70,7 +71,9 @@ class FairlibChatModel(AbstractChatModel):
         availability_check: Callable[[], None],
         description: str = "chat completion",
     ) -> None:
-        self._message_cls, self._fairlib_error = _fairlib_symbols()
+        self._message_cls, self._fairlib_error, self._fairlib_config_error = (
+            _fairlib_symbols()
+        )
         self._adapter = adapter
         self.model_name = model_name
         self._availability_check = availability_check
@@ -83,12 +86,13 @@ class FairlibChatModel(AbstractChatModel):
         self, messages: Sequence[ChatMessage], **options: object
     ) -> ChatResponse:
         if any(m.images for m in messages) and not self.capabilities()["vision"]:
-            # Pre-#146 fairlib adapters drop images silently; refuse instead
-            # of degrading (design principle 6).
-            raise AdapterError(
-                f"{self.model_name} does not declare the vision capability but "
-                f"was given a message carrying images; the frames would be "
-                f"silently dropped."
+            # Defense in depth ahead of fairlib's own payload-time refusal,
+            # with matching semantics: a capability mismatch is deterministic
+            # misconfiguration, not a call failure (design principle 6).
+            raise ConfigurationError(
+                f"{self.model_name} received a message carrying images but does "
+                f"not declare the vision capability; use a vision-capable model "
+                f"or send messages without images."
             )
 
         fairlib_messages = [
@@ -97,6 +101,14 @@ class FairlibChatModel(AbstractChatModel):
         ]
         try:
             reply = self._adapter.invoke(fairlib_messages, **options)
+        except self._fairlib_config_error as e:
+            # fairlib refuses capability mismatches (e.g. images to a
+            # non-vision adapter) at payload-build time; keep the type
+            # provider-neutral crossing the seam (principle 1).
+            raise ConfigurationError(
+                f"{self.description} with {self.model_name} was refused by the "
+                f"fairlib adapter: {e}"
+            ) from e
         except self._fairlib_error as e:
             raise AdapterError(
                 f"{self.description} with {self.model_name} failed in the fairlib adapter: {e}"

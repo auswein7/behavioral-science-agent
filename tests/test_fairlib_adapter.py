@@ -27,6 +27,10 @@ class StubFairlibAdapterError(Exception):
     pass
 
 
+class StubFairlibConfigurationError(Exception):
+    pass
+
+
 def install_stub_fairlib(monkeypatch):
     fairlib_mod = types.ModuleType("fairlib")
     core_mod = types.ModuleType("fairlib.core")
@@ -34,6 +38,7 @@ def install_stub_fairlib(monkeypatch):
     errors_mod = types.ModuleType("fairlib.core.errors")
     message_mod.Message = StubMessage
     errors_mod.AdapterError = StubFairlibAdapterError
+    errors_mod.ConfigurationError = StubFairlibConfigurationError
     fairlib_mod.core = core_mod
     core_mod.message = message_mod
     core_mod.errors = errors_mod
@@ -143,9 +148,10 @@ class TestInvoke:
         assert response.content == ""
 
     def test_images_refused_without_vision_capability(self, stub):
-        # Refusal beats silent frame-dropping (principle 6).
+        # Refusal beats silent frame-dropping (principle 6); a capability
+        # mismatch is misconfiguration, matching upstream fairlib semantics.
         adapter = FakeFairlibAdapter(vision=False)
-        with pytest.raises(AdapterError, match="vision"):
+        with pytest.raises(ConfigurationError, match="vision"):
             make_model(adapter).invoke(
                 [ChatMessage(role="user", content="p", images=(b"x",))]
             )
@@ -160,6 +166,15 @@ class TestInvoke:
     def test_fairlib_error_wrapped_as_typed_adapter_error(self, stub):
         adapter = FakeFairlibAdapter(error=StubFairlibAdapterError("boom"))
         with pytest.raises(AdapterError, match="boom"):
+            make_model(adapter).invoke([ChatMessage(role="user", content="p")])
+
+    def test_fairlib_refusal_wrapped_as_typed_configuration_error(self, stub):
+        # fairlib refuses capability mismatches at payload-build time with its
+        # own ConfigurationError; the type must not cross the seam raw.
+        adapter = FakeFairlibAdapter(
+            error=StubFairlibConfigurationError("no vision declared")
+        )
+        with pytest.raises(ConfigurationError, match="no vision declared"):
             make_model(adapter).invoke([ChatMessage(role="user", content="p")])
 
 
@@ -197,3 +212,19 @@ class TestRealFairlibContract:
         [sent] = call["messages"]
         assert isinstance(sent, message_mod.Message)
         assert sent.images == (b"jpegbytes",)
+
+    def test_non_vision_refusal_is_this_projects_configuration_error(self):
+        # Upstream refuses images on a non-vision adapter with fairlib's
+        # ConfigurationError; through the seam the caller must see this
+        # project's ConfigurationError, never a fairlib type. No network:
+        # refusal fires before any request.
+        message_mod = pytest.importorskip("fairlib.core.message")
+        fields = {f.name for f in dataclasses.fields(message_mod.Message)}
+        if "images" not in fields:
+            pytest.skip("installed fairlib predates issue #146 vision support")
+        mal = pytest.importorskip("fairlib.modules.mal.local_llama_adapter")
+        adapter = mal.OllamaAdapter(model_name="m1", vision=False)
+        with pytest.raises(ConfigurationError, match="vision"):
+            make_model(adapter).invoke(
+                [ChatMessage(role="user", content="p", images=(b"x",))]
+            )
