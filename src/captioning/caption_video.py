@@ -5,10 +5,9 @@ import logging
 import re
 from pathlib import Path
 
-import ollama
 from PIL import Image
 
-from src.errors import ConfigurationError
+from src.adapters import AbstractChatModel, ChatMessage, OllamaChatModel
 from src.persist import write_records
 from src.prompts import (
     CHANGE_PROMPT,
@@ -16,7 +15,6 @@ from src.prompts import (
     SPEECH_START_BURST_CONTINUATION_PROMPT,
     SPEECH_START_PROMPT,
 )
-from src.reliability import call_with_retry
 from src.video_utils.extract_frames import load_burst_frames_at, load_frames
 
 logger = logging.getLogger(__name__)
@@ -26,22 +24,6 @@ DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parents[2] / "data" / "captions"
 
 _NO_PRIOR_CAPTION = "(no earlier description available)"
 _SPEAKER_TAG_RE = re.compile(r"SPEAKER_\d+")
-
-
-def _ensure_model_pulled(model_name: str) -> None:
-    try:
-        local_models = {m.model for m in ollama.list().models}
-    except ConnectionError as e:
-        raise ConfigurationError(
-            "Could not reach the local Ollama server. Make sure Ollama is installed "
-            "and running (https://ollama.com/download), then try again."
-        ) from e
-
-    if any(name == model_name or name.startswith(f"{model_name}:") for name in local_models):
-        return
-
-    logger.info("Model %s not found locally, pulling via Ollama...", model_name)
-    ollama.pull(model_name)
 
 
 def _numbered_captions(previous_captions: list[str]) -> str:
@@ -97,25 +79,21 @@ def _hhmmss(seconds: float) -> str:
 
 
 def _caption_single(
-    model_name: str,
+    model: AbstractChatModel,
     image: Image.Image,
     prompt: str,
     max_dimension: int | None = None,
     options: dict | None = None,
 ) -> str:
-    response = call_with_retry(
-        lambda: ollama.chat(
-            model=model_name,
-            messages=[{"role": "user", "content": prompt, "images": [_image_bytes(image, max_dimension)]}],
-            options=options or {},
-        ),
-        description=f"frame caption with {model_name}",
+    message = ChatMessage(
+        role="user", content=prompt, images=(_image_bytes(image, max_dimension),)
     )
-    return response.message.content.strip()
+    response = model.invoke([message], **(options or {}))
+    return response.content.strip()
 
 
 def _caption_speech_burst(
-    model_name: str,
+    model: AbstractChatModel,
     burst: list[tuple[float, Image.Image]],
     speaker: str,
     outer_context: list[str],
@@ -148,7 +126,7 @@ def _caption_speech_burst(
             prompt = SPEECH_START_BURST_CONTINUATION_PROMPT.format(
                 speaker=speaker, spacing=burst_spacing, previous_caption=captions[-1]
             )
-        captions.append(_caption_single(model_name, image, prompt, max_dimension, options))
+        captions.append(_caption_single(model, image, prompt, max_dimension, options))
 
     return captions[-1], captions
 
@@ -218,7 +196,8 @@ def caption_video(
     only copy of the work in memory).
     """
     video_path = Path(video_path)
-    _ensure_model_pulled(model_name)
+    model = OllamaChatModel(model_name, auto_pull=True, description="frame caption")
+    model.ensure_available()
 
     options: dict = {"temperature": temperature}
     if seed is not None:
@@ -272,10 +251,10 @@ def caption_video(
         burst_captions = None
         if entry["trigger"] == "fixed_interval":
             prompt = FIRST_FRAME_PROMPT if not context else _change_prompt(context)
-            caption = _caption_single(model_name, entry["image"], prompt, max_dimension, options)
+            caption = _caption_single(model, entry["image"], prompt, max_dimension, options)
         else:
             caption, burst_captions = _caption_speech_burst(
-                model_name, entry["burst"], entry["speaker"], context, burst_spacing,
+                model, entry["burst"], entry["speaker"], context, burst_spacing,
                 max_dimension, options,
             )
 

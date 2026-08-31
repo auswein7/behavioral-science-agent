@@ -6,11 +6,9 @@ import json
 import logging
 from pathlib import Path
 
-import ollama
-
-from src.errors import AdapterError, ConfigurationError
+from src.adapters import ChatMessage, OllamaChatModel
+from src.errors import AdapterError
 from src.prompts import SCREENPLAY_SYSTEM_PROMPT
-from src.reliability import call_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -19,24 +17,10 @@ DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parents[2] / "data" / "screenplays
 
 SYSTEM_PROMPT = SCREENPLAY_SYSTEM_PROMPT
 
-
-def _ensure_model_available(model_name: str) -> None:
-    try:
-        local_models = {m.model for m in ollama.list().models}
-    except ConnectionError as e:
-        raise ConfigurationError(
-            "Could not reach the local Ollama server. Make sure Ollama is installed "
-            "and running (https://ollama.com/download), then try again."
-        ) from e
-
-    if any(name == model_name or name.startswith(f"{model_name}:") for name in local_models):
-        return
-
-    raise ConfigurationError(
-        f"Model '{model_name}' was not found in your local Ollama models "
-        f"(`ollama list`). Ornith is not on the public Ollama registry, so it can't be "
-        "pulled automatically — make sure it's been created locally before running this."
-    )
+ORNITH_UNAVAILABLE_HINT = (
+    "Ornith is not on the public Ollama registry, so it can't be pulled "
+    "automatically - make sure it's been created locally before running this."
+)
 
 
 def write_screenplay(
@@ -53,7 +37,13 @@ def write_screenplay(
     Sampling is deterministic by default (temperature 0; design principle 8) and the
     options actually sent to Ollama are exactly what the run's provenance records.
     """
-    _ensure_model_available(model_name)
+    model = OllamaChatModel(
+        model_name,
+        auto_pull=False,
+        description="screenplay generation",
+        unavailable_hint=ORNITH_UNAVAILABLE_HINT,
+    )
+    model.ensure_available()
 
     options: dict = {"temperature": temperature}
     if seed is not None:
@@ -69,18 +59,14 @@ def write_screenplay(
         f"{json.dumps(events, indent=2)}"
     )
 
-    response = call_with_retry(
-        lambda: ollama.chat(
-            model=model_name,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
-            ],
-            options=options,
-        ),
-        description=f"screenplay generation with {model_name}",
+    response = model.invoke(
+        [
+            ChatMessage(role="system", content=SYSTEM_PROMPT),
+            ChatMessage(role="user", content=user_prompt),
+        ],
+        **options,
     )
-    screenplay_md = (response.message.content or "").strip()
+    screenplay_md = response.content.strip()
     if not screenplay_md:
         # A reasoning model that runs out of context mid-think returns 200 OK with
         # empty content (done_reason "length") - a silent empty string here once
@@ -88,9 +74,9 @@ def write_screenplay(
         # a degraded result is a typed error, never a swallowed empty value.
         raise AdapterError(
             f"{model_name} returned an empty screenplay "
-            f"(done_reason={getattr(response, 'done_reason', None)!r}, "
-            f"prompt_eval={getattr(response, 'prompt_eval_count', None)}, "
-            f"eval={getattr(response, 'eval_count', None)}); if done_reason is "
+            f"(done_reason={response.done_reason!r}, "
+            f"prompt_eval={response.prompt_eval_count}, "
+            f"eval={response.eval_count}); if done_reason is "
             f"'length', the prompt plus the model's thinking overflowed num_ctx - "
             f"raise ORNITH_NUM_CTX or shorten the caption stage's output"
         )

@@ -1,10 +1,12 @@
-"""Unit tests for the orchestrator stage's typed-error contract, model mocked."""
+"""Unit tests for the orchestrator stage's typed-error contract, model mocked
+at the adapter boundary (the stage itself never touches a provider SDK)."""
 
 import importlib
 from types import SimpleNamespace
 
 import pytest
 
+from src import adapters
 from src.errors import AdapterError
 
 # The package re-exports the function under the same name, so a plain
@@ -12,40 +14,45 @@ from src.errors import AdapterError
 ws = importlib.import_module("src.screenplay.write_screenplay")
 
 
-def fake_response(content: str):
+def fake_ollama(content: str):
     return SimpleNamespace(
-        message=SimpleNamespace(content=content),
-        done_reason="length",
-        prompt_eval_count=110936,
-        eval_count=20136,
+        list=lambda: SimpleNamespace(models=[SimpleNamespace(model="ornith-1.5-255k:latest")]),
+        chat=lambda **kwargs: SimpleNamespace(
+            message=SimpleNamespace(content=content),
+            done_reason="length",
+            prompt_eval_count=110936,
+            eval_count=20136,
+        ),
     )
 
 
 @pytest.fixture
-def patched(monkeypatch):
-    monkeypatch.setattr(ws, "_ensure_model_available", lambda name: None)
-    return monkeypatch
+def with_model_output(monkeypatch):
+    def patch(content: str):
+        monkeypatch.setattr(adapters, "ollama", fake_ollama(content))
+
+    return patch
 
 
 class TestWriteScreenplayEmptyContent:
-    def test_empty_content_raises_typed_error(self, patched):
+    def test_empty_content_raises_typed_error(self, with_model_output):
         # A reasoning model that overflows its context mid-think returns 200 OK
         # with empty content; that must surface as a typed AdapterError, never
         # a silent empty screenplay (principle 6).
-        patched.setattr(ws.ollama, "chat", lambda **kwargs: fake_response(""))
+        with_model_output("")
         with pytest.raises(AdapterError, match="empty screenplay"):
             ws.write_screenplay([{"type": "speech"}], template="# T")
 
-    def test_whitespace_content_raises_typed_error(self, patched):
-        patched.setattr(ws.ollama, "chat", lambda **kwargs: fake_response("  \n "))
+    def test_whitespace_content_raises_typed_error(self, with_model_output):
+        with_model_output("  \n ")
         with pytest.raises(AdapterError):
             ws.write_screenplay([{"type": "speech"}], template="# T")
 
-    def test_error_message_names_the_context_lever(self, patched):
-        patched.setattr(ws.ollama, "chat", lambda **kwargs: fake_response(""))
+    def test_error_message_names_the_context_lever(self, with_model_output):
+        with_model_output("")
         with pytest.raises(AdapterError, match="ORNITH_NUM_CTX"):
             ws.write_screenplay([{"type": "speech"}], template="# T")
 
-    def test_real_content_returned_stripped(self, patched):
-        patched.setattr(ws.ollama, "chat", lambda **kwargs: fake_response("# Screenplay\n"))
+    def test_real_content_returned_stripped(self, with_model_output):
+        with_model_output("# Screenplay\n")
         assert ws.write_screenplay([{"type": "speech"}], template="# T") == "# Screenplay"

@@ -12,6 +12,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from src import adapters
 from src.persist import read_records
 from src.video_utils import load_audio_numpy_array
 from src.video_utils.extract_frames import load_burst_frames_at, load_frames
@@ -76,7 +77,7 @@ class TestVideoUtils:
 
 
 class FakeOllama:
-    """Stands in for the ollama module inside caption_video."""
+    """Stands in for the ollama module behind the adapter layer."""
 
     def __init__(self):
         self.chat_calls: list[dict] = []
@@ -94,7 +95,7 @@ class FakeOllama:
 class TestCaptionStage:
     def test_caption_video_end_to_end_with_mocked_model(self, fixture_clip, tmp_path, monkeypatch):
         fake = FakeOllama()
-        monkeypatch.setattr(cv, "ollama", fake)
+        monkeypatch.setattr(adapters, "ollama", fake)
         checkpoint = tmp_path / "captions.partial.json"
 
         records = cv.caption_video(
