@@ -19,7 +19,7 @@ from src.errors import AdapterError, ConfigurationError
 from src.fairlib_adapter import FairlibChatModel
 
 
-class StubDoneReason(str, enum.Enum):
+class StubDoneReason(enum.StrEnum):
     STOP = "stop"
     LENGTH = "length"
     TOOL_CALLS = "tool_calls"
