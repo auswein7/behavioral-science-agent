@@ -109,6 +109,59 @@ class TestInvoke:
         assert response.truncated is None
 
 
+class _CountingModel(adapters.AbstractChatModel):
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.ensured = 0
+
+    def ensure_available(self):
+        self.ensured += 1
+
+    def invoke(self, messages, **options):
+        return self.responses.pop(0)
+
+    def capabilities(self):
+        return {"vision": True}
+
+
+class TestUsageRecordingModel:
+    def test_tallies_reported_usage_across_calls(self):
+        from src.adapters import ChatResponse, UsageRecordingModel
+
+        model = UsageRecordingModel(
+            _CountingModel(
+                [
+                    ChatResponse("a", "m", prompt_eval_count=10, eval_count=2),
+                    ChatResponse("b", "m", prompt_eval_count=5, eval_count=1),
+                ]
+            )
+        )
+        for _ in range(2):
+            model.invoke([ChatMessage(role="user", content="p")])
+        assert model.tally.calls == 2
+        assert model.tally.calls_reporting == 2
+        assert (model.tally.prompt_tokens, model.tally.completion_tokens) == (15, 3)
+
+    def test_unreported_usage_counts_the_call_but_not_tokens(self):
+        # A backend with no telemetry: the tally shows 0 calls_reporting so
+        # a zero total reads as unknown, never as "free" (principle 6).
+        from src.adapters import ChatResponse, UsageRecordingModel
+
+        model = UsageRecordingModel(_CountingModel([ChatResponse("a", "m")]))
+        model.invoke([ChatMessage(role="user", content="p")])
+        assert model.tally.calls == 1
+        assert model.tally.calls_reporting == 0
+
+    def test_delegates_availability_and_capabilities(self):
+        from src.adapters import ChatResponse, UsageRecordingModel
+
+        inner = _CountingModel([ChatResponse("a", "m")])
+        model = UsageRecordingModel(inner)
+        model.ensure_available()
+        assert inner.ensured == 1
+        assert model.capabilities() == {"vision": True}
+
+
 class TestCapabilities:
     def test_vision_declared(self, fake):
         assert OllamaChatModel("m1").capabilities()["vision"] is True

@@ -214,6 +214,19 @@ class GateFinding(_Internal):
     excerpt: str
 
 
+class StageUsage(_Deliverable):
+    """Aggregated model-call usage for one stage (DATA_MODEL 4.3).
+
+    Token totals are None when no call in the stage reported accounting
+    (unknown, not zero); calls_reporting says how many did, so a partial
+    total is legible as partial."""
+
+    calls: int
+    calls_reporting: int
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+
+
 class RunProvenance(_Deliverable):
     """Reproducibility record for one run (DATA_MODEL 4.3)."""
 
@@ -229,6 +242,7 @@ class RunProvenance(_Deliverable):
     prompt_versions: dict[str, str] = Field(default_factory=dict)
     software: dict[str, str] = Field(default_factory=dict)
     stage_timings: dict[str, float] = Field(default_factory=dict)
+    stage_usage: dict[str, StageUsage] = Field(default_factory=dict)
 
 
 class ScrubReport(_Deliverable):

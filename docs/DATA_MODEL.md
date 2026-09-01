@@ -215,6 +215,7 @@ Everything needed to reproduce or audit the run without the Tier A/B data.
 | prompt_versions | dict[str, str] | prompt asset -> version id |
 | software | dict[str, str] | python, ollama, pinned package versions |
 | stage_timings | dict[str, float] | wall seconds per stage |
+| stage_usage | dict[str, StageUsage] | per LLM stage: calls, calls_reporting, prompt_tokens, completion_tokens; token totals are null when no call reported accounting (unknown, not zero) |
 
 ### 4.4 ScrubReport - two forms, one gate
 

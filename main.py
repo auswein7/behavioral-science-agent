@@ -28,13 +28,14 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from src.adapters import UsageRecordingModel, UsageTally
 from src.backends import build_caption_model, build_screenplay_model
 from src.captioning import caption_video
 from src.captioning import write_json as write_captions_json
 from src.config import load_run_config, preflight
 from src.persist import read_records
 from src.reliability import RETRYABLE
-from src.schemas import RunConfig, RunProvenance, SessionManifest
+from src.schemas import RunConfig, RunProvenance, SessionManifest, StageUsage
 from src.screenplay import merge_screenplay, scrub_check, write_screenplay
 from src.screenplay import write_json as write_screenplay_json
 from src.screenplay import write_md as write_screenplay_md
@@ -149,6 +150,7 @@ def main() -> None:
               need_captioning=start <= STAGES.index("caption"))
 
     timings: dict[str, float] = {}
+    usage_tallies: dict[str, UsageTally] = {}
     audio = None
     if start <= STAGES.index("tone"):
         audio = load_audio_numpy_array(video_path)
@@ -202,12 +204,14 @@ def main() -> None:
     if start <= STAGES.index("caption"):
         logger.info("[3/5] Captioning video frames (fixed-interval + speech-start): %s", video_path)
         t0 = time.monotonic()
+        caption_model = UsageRecordingModel(
+            build_caption_model(config.captioning.backend, config.captioning.caption_model)
+        )
+        usage_tallies["caption"] = caption_model.tally
         caption_records = caption_video(
             video_path,
             fps=config.captioning.fps,
-            model=build_caption_model(
-                config.captioning.backend, config.captioning.caption_model
-            ),
+            model=caption_model,
             context_captions=config.captioning.context_captions,
             utterances=[{"start": r["start"], "speaker": r["speaker"]} for r in tone_records],
             speech_start_offset=config.captioning.speech_frame_offset,
@@ -236,14 +240,18 @@ def main() -> None:
     logger.info("[5/5] Writing final screenplay with Ornith")
     t0 = time.monotonic()
     template = TEMPLATE_PATH.read_text()
-    screenplay_md = write_screenplay(
-        events,
-        template,
-        model=build_screenplay_model(
+    screenplay_model = UsageRecordingModel(
+        build_screenplay_model(
             config.screenplay.backend,
             config.screenplay.ornith_model,
             unavailable_hint=ORNITH_UNAVAILABLE_HINT,
-        ),
+        )
+    )
+    usage_tallies["screenplay"] = screenplay_model.tally
+    screenplay_md = write_screenplay(
+        events,
+        template,
+        model=screenplay_model,
         temperature=config.sampling.temperature,
         seed=config.sampling.seed,
         num_ctx=config.screenplay.num_ctx,
@@ -263,6 +271,17 @@ def main() -> None:
         prompt_versions=config.prompt_versions,
         software=_software_versions(),
         stage_timings={stage: round(seconds, 2) for stage, seconds in timings.items()},
+        stage_usage={
+            stage: StageUsage(
+                calls=tally.calls,
+                calls_reporting=tally.calls_reporting,
+                prompt_tokens=tally.prompt_tokens if tally.calls_reporting else None,
+                completion_tokens=(
+                    tally.completion_tokens if tally.calls_reporting else None
+                ),
+            )
+            for stage, tally in usage_tallies.items()
+        },
     )
     DELIVERABLES_DIR.mkdir(parents=True, exist_ok=True)
     provenance_path = DELIVERABLES_DIR / f"{name}.provenance.json"

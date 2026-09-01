@@ -113,6 +113,48 @@ def ensure_ollama_model(
     raise ConfigurationError(message)
 
 
+@dataclass
+class UsageTally:
+    """Running totals of per-call usage across one stage's model calls.
+
+    calls_reporting counts the calls whose backend actually returned token
+    accounting; a tally with calls_reporting == 0 means usage is unknown for
+    the stage, not zero (the same honest tri-state as ChatResponse)."""
+
+    calls: int = 0
+    calls_reporting: int = 0
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+
+
+class UsageRecordingModel(AbstractChatModel):
+    """Delegating wrapper that tallies each reply's usage for run provenance.
+
+    Cross-cutting accounting belongs to the adapter layer, not to stages
+    (design principle 7): entry points wrap whichever backend the factory
+    built, the stage sees only AbstractChatModel, and the tally feeds
+    RunProvenance.stage_usage after the stage finishes."""
+
+    def __init__(self, inner: AbstractChatModel) -> None:
+        self._inner = inner
+        self.tally = UsageTally()
+
+    def ensure_available(self) -> None:
+        self._inner.ensure_available()
+
+    def invoke(self, messages: Sequence[ChatMessage], **options: object) -> ChatResponse:
+        response = self._inner.invoke(messages, **options)
+        self.tally.calls += 1
+        if response.prompt_eval_count is not None or response.eval_count is not None:
+            self.tally.calls_reporting += 1
+            self.tally.prompt_tokens += response.prompt_eval_count or 0
+            self.tally.completion_tokens += response.eval_count or 0
+        return response
+
+    def capabilities(self) -> dict[str, bool]:
+        return self._inner.capabilities()
+
+
 class OllamaChatModel(AbstractChatModel):
     """Chat models served by the local Ollama daemon.
 
