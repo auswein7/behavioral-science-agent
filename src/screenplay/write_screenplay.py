@@ -6,7 +6,7 @@ import json
 import logging
 from pathlib import Path
 
-from src.adapters import ChatMessage, OllamaChatModel
+from src.adapters import AbstractChatModel, ChatMessage, OllamaChatModel
 from src.errors import AdapterError
 from src.prompts import SCREENPLAY_SYSTEM_PROMPT
 
@@ -30,19 +30,25 @@ def write_screenplay(
     temperature: float = 0.0,
     seed: int | None = None,
     num_ctx: int | None = None,
+    model: AbstractChatModel | None = None,
 ) -> str:
     """Prompt the orchestrator model to format a timeline of events into a screenplay .md,
     matching the structure of the given template. Returns the generated Markdown text.
 
     Sampling is deterministic by default (temperature 0; design principle 8) and the
     options actually sent to Ollama are exactly what the run's provenance records.
+
+    Pass `model` to run the stage against any AbstractChatModel backend; when
+    None, a local OllamaChatModel for `model_name` is constructed as before.
+    The stage never learns which backend it got (design principle 2).
     """
-    model = OllamaChatModel(
-        model_name,
-        auto_pull=False,
-        description="screenplay generation",
-        unavailable_hint=ORNITH_UNAVAILABLE_HINT,
-    )
+    if model is None:
+        model = OllamaChatModel(
+            model_name,
+            auto_pull=False,
+            description="screenplay generation",
+            unavailable_hint=ORNITH_UNAVAILABLE_HINT,
+        )
     model.ensure_available()
 
     options: dict = {"temperature": temperature}
@@ -69,16 +75,32 @@ def write_screenplay(
     screenplay_md = response.content.strip()
     if not screenplay_md:
         # A reasoning model that runs out of context mid-think returns 200 OK with
-        # empty content (done_reason "length") - a silent empty string here once
-        # produced a 0-char screenplay that sailed through the gate. Principle 6:
-        # a degraded result is a typed error, never a swallowed empty value.
-        raise AdapterError(
-            f"{model_name} returned an empty screenplay "
+        # empty content and a truncated stop reason - a silent empty string here
+        # once produced a 0-char screenplay that sailed through the gate.
+        # Principle 6: a degraded result is a typed error, never a swallowed
+        # empty value. The branch reads the seam's normalized truncated signal,
+        # never the provider's raw reason string (principle 1); the raw value
+        # still rides along in the message for the run record.
+        detail = (
             f"(done_reason={response.done_reason!r}, "
             f"prompt_eval={response.prompt_eval_count}, "
-            f"eval={response.eval_count}); if done_reason is "
-            f"'length', the prompt plus the model's thinking overflowed num_ctx - "
-            f"raise ORNITH_NUM_CTX or shorten the caption stage's output"
+            f"eval={response.eval_count})"
+        )
+        if response.truncated:
+            remedy = (
+                "the prompt plus the model's thinking overflowed num_ctx - "
+                "raise ORNITH_NUM_CTX or shorten the caption stage's output"
+            )
+        elif response.truncated is None:
+            remedy = (
+                "this backend does not report stop reasons, so overflow cannot "
+                "be distinguished from other failures - if output stays empty, "
+                "try raising ORNITH_NUM_CTX or use a backend that reports them"
+            )
+        else:
+            remedy = "the model stopped without a context overflow; check the model and prompt"
+        raise AdapterError(
+            f"{response.model} returned an empty screenplay {detail}; {remedy}"
         )
     logger.info("Generated screenplay (%d chars) with model %s", len(screenplay_md), model_name)
     return screenplay_md

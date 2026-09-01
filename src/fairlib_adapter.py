@@ -13,11 +13,13 @@ is deliberately NOT wrapped here: fairlib owns retry for its own adapters
 (design principle 7), unlike src/adapters.py whose OllamaChatModel wraps the
 raw SDK in call_with_retry.
 
-Known contract gap, tracked upstream as fair_llm issue #147: fairlib replies
-carry no usage accounting yet, so done_reason / prompt_eval_count /
-eval_count on ChatResponse are None. The screenplay stage's context-overflow
-diagnostic depends on done_reason, so Ornith must stay on OllamaChatModel
-until #147 lands; the captioner does not read those fields and can swap now.
+Usage telemetry (fair_llm issue #147, frozen sketch 2026-09-01): replies
+carry Message.usage - a Usage record with prompt_tokens, completion_tokens,
+a normalized DoneReason enum (LENGTH is the one overflow sentinel) and the
+verbatim raw_done_reason. The mapping here sets ChatResponse.truncated from
+the sentinel and passes raw_done_reason through as done_reason; against a
+fairlib that predates #147, replies simply have no usage attribute and every
+accounting field stays None (the seam's honest tri-state, principle 6).
 """
 
 import logging
@@ -54,6 +56,19 @@ def _fairlib_symbols() -> tuple[type, type[Exception], type[Exception]]:
     return Message, FairlibAdapterError, FairlibConfigurationError
 
 
+def fairlib_reports_usage() -> bool:
+    """True when the installed fairlib carries #147 usage telemetry on its
+    Message. False for a missing fairlib too - callers that need fairlib at
+    all get the ConfigurationError from construction, not from this probe."""
+    try:
+        import dataclasses
+
+        from fairlib.core.message import Message
+    except ImportError:
+        return False
+    return "usage" in {f.name for f in dataclasses.fields(Message)}
+
+
 class FairlibChatModel(AbstractChatModel):
     """Chat models reached through a fairlib adapter.
 
@@ -74,6 +89,17 @@ class FairlibChatModel(AbstractChatModel):
         self._message_cls, self._fairlib_error, self._fairlib_config_error = (
             _fairlib_symbols()
         )
+        # The one overflow sentinel of the #147 contract. DoneReason is a str
+        # enum whose LENGTH value is the frozen string "length", so the
+        # fallback compares equal to the real enum member; it exists only so
+        # this class still constructs against a pre-#147 fairlib (where
+        # replies carry no usage and the sentinel is never consulted).
+        try:
+            from fairlib.core.message import DoneReason
+
+            self._length_sentinel: object = DoneReason.LENGTH
+        except ImportError:
+            self._length_sentinel = "length"
         self._adapter = adapter
         self.model_name = model_name
         self._availability_check = availability_check
@@ -114,11 +140,22 @@ class FairlibChatModel(AbstractChatModel):
                 f"{self.description} with {self.model_name} failed in the fairlib adapter: {e}"
             ) from e
 
-        # done_reason / token counts stay None until fair_llm #147 attaches
-        # usage accounting to the reply; see the module docstring.
+        content = getattr(reply, "content", None) or ""
+        usage = getattr(reply, "usage", None)
+        if usage is None:
+            # Pre-#147 fairlib, or a reply without telemetry: every
+            # accounting field stays None - unknown, not "no overflow".
+            return ChatResponse(content=content, model=self.model_name)
+        truncated = None
+        if usage.done_reason is not None:
+            truncated = usage.done_reason == self._length_sentinel
         return ChatResponse(
-            content=getattr(reply, "content", None) or "",
+            content=content,
             model=self.model_name,
+            done_reason=usage.raw_done_reason,
+            prompt_eval_count=usage.prompt_tokens,
+            eval_count=usage.completion_tokens,
+            truncated=truncated,
         )
 
     def capabilities(self) -> dict[str, bool]:

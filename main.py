@@ -28,6 +28,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from src.backends import build_caption_model, build_screenplay_model
 from src.captioning import caption_video
 from src.captioning import write_json as write_captions_json
 from src.config import load_run_config, preflight
@@ -37,6 +38,7 @@ from src.schemas import RunConfig, RunProvenance, SessionManifest
 from src.screenplay import merge_screenplay, scrub_check, write_screenplay
 from src.screenplay import write_json as write_screenplay_json
 from src.screenplay import write_md as write_screenplay_md
+from src.screenplay.write_screenplay import ORNITH_UNAVAILABLE_HINT
 from src.scrub import (
     evaluate_gate,
     require_pass,
@@ -203,7 +205,9 @@ def main() -> None:
         caption_records = caption_video(
             video_path,
             fps=config.captioning.fps,
-            model_name=config.captioning.caption_model,
+            model=build_caption_model(
+                config.captioning.backend, config.captioning.caption_model
+            ),
             context_captions=config.captioning.context_captions,
             utterances=[{"start": r["start"], "speaker": r["speaker"]} for r in tone_records],
             speech_start_offset=config.captioning.speech_frame_offset,
@@ -235,7 +239,11 @@ def main() -> None:
     screenplay_md = write_screenplay(
         events,
         template,
-        model_name=config.screenplay.ornith_model,
+        model=build_screenplay_model(
+            config.screenplay.backend,
+            config.screenplay.ornith_model,
+            unavailable_hint=ORNITH_UNAVAILABLE_HINT,
+        ),
         temperature=config.sampling.temperature,
         seed=config.sampling.seed,
         num_ctx=config.screenplay.num_ctx,

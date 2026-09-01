@@ -13,8 +13,10 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from src.backends import build_screenplay_model
 from src.persist import read_records
 from src.screenplay import write_md, write_screenplay
+from src.screenplay.write_screenplay import ORNITH_UNAVAILABLE_HINT
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +45,11 @@ def main() -> None:
     screenplay_md = write_screenplay(
         events,
         template,
-        model_name=os.environ.get("ORNITH_MODEL", "ornith-1.5-255k"),
+        model=build_screenplay_model(
+            os.environ.get("SCREENPLAY_BACKEND", "ollama"),
+            os.environ.get("ORNITH_MODEL", "ornith-1.5-255k"),
+            unavailable_hint=ORNITH_UNAVAILABLE_HINT,
+        ),
     )
 
     name = json_path.stem.removesuffix(".screenplay")

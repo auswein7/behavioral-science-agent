@@ -13,6 +13,7 @@ class FakeOllama:
     def __init__(self, local_models=("some-model:latest",), content="hello"):
         self.local_models = list(local_models)
         self.content = content
+        self.done_reason = "stop"
         self.pulled: list[str] = []
         self.chat_calls: list[dict] = []
 
@@ -26,7 +27,7 @@ class FakeOllama:
         self.chat_calls.append({"model": model, "messages": messages, "options": options})
         return SimpleNamespace(
             message=SimpleNamespace(content=self.content),
-            done_reason="stop",
+            done_reason=self.done_reason,
             prompt_eval_count=10,
             eval_count=5,
         )
@@ -89,6 +90,23 @@ class TestInvoke:
         fake.content = None
         response = OllamaChatModel("m1").invoke([ChatMessage(role="user", content="p")])
         assert response.content == ""
+
+    def test_length_stop_normalized_to_truncated(self, fake):
+        # The provider's literal "length" is mapped here and nowhere upstream:
+        # consumers branch on ChatResponse.truncated, never on the raw string.
+        fake.done_reason = "length"
+        response = OllamaChatModel("m1").invoke([ChatMessage(role="user", content="p")])
+        assert response.truncated is True
+        assert response.done_reason == "length"
+
+    def test_other_stop_reason_is_not_truncated(self, fake):
+        response = OllamaChatModel("m1").invoke([ChatMessage(role="user", content="p")])
+        assert response.truncated is False
+
+    def test_missing_stop_reason_leaves_truncated_unknown(self, fake):
+        fake.done_reason = None
+        response = OllamaChatModel("m1").invoke([ChatMessage(role="user", content="p")])
+        assert response.truncated is None
 
 
 class TestCapabilities:

@@ -29,6 +29,30 @@ class TestLoadRunConfig:
         with pytest.raises(ConfigurationError):
             load_run_config(env={"CAPTION_FPS": "one"})
 
+    def test_caption_backend_defaults_to_ollama(self):
+        config = load_run_config(env={})
+        assert config.captioning.backend == "ollama"
+
+    def test_caption_backend_env_override(self):
+        config = load_run_config(env={"CAPTION_BACKEND": "fairlib"})
+        assert config.captioning.backend == "fairlib"
+
+    def test_unknown_caption_backend_is_typed_error(self):
+        with pytest.raises(ConfigurationError):
+            load_run_config(env={"CAPTION_BACKEND": "langchain"})
+
+    def test_screenplay_backend_defaults_to_ollama(self):
+        config = load_run_config(env={})
+        assert config.screenplay.backend == "ollama"
+
+    def test_screenplay_backend_env_override(self):
+        config = load_run_config(env={"SCREENPLAY_BACKEND": "fairlib"})
+        assert config.screenplay.backend == "fairlib"
+
+    def test_unknown_screenplay_backend_is_typed_error(self):
+        with pytest.raises(ConfigurationError):
+            load_run_config(env={"SCREENPLAY_BACKEND": "vllm"})
+
     def test_prompt_versions_recorded(self):
         config = load_run_config(env={})
         assert "ANONYMIZATION_RULES" in config.prompt_versions

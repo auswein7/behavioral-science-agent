@@ -14,12 +14,12 @@ from src.errors import AdapterError
 ws = importlib.import_module("src.screenplay.write_screenplay")
 
 
-def fake_ollama(content: str):
+def fake_ollama(content: str, done_reason: str | None = "length"):
     return SimpleNamespace(
         list=lambda: SimpleNamespace(models=[SimpleNamespace(model="ornith-1.5-255k:latest")]),
         chat=lambda **kwargs: SimpleNamespace(
             message=SimpleNamespace(content=content),
-            done_reason="length",
+            done_reason=done_reason,
             prompt_eval_count=110936,
             eval_count=20136,
         ),
@@ -28,8 +28,8 @@ def fake_ollama(content: str):
 
 @pytest.fixture
 def with_model_output(monkeypatch):
-    def patch(content: str):
-        monkeypatch.setattr(adapters, "ollama", fake_ollama(content))
+    def patch(content: str, done_reason: str | None = "length"):
+        monkeypatch.setattr(adapters, "ollama", fake_ollama(content, done_reason))
 
     return patch
 
@@ -51,6 +51,25 @@ class TestWriteScreenplayEmptyContent:
     def test_error_message_names_the_context_lever(self, with_model_output):
         with_model_output("")
         with pytest.raises(AdapterError, match="ORNITH_NUM_CTX"):
+            ws.write_screenplay([{"type": "speech"}], template="# T")
+
+    def test_overflow_remedy_comes_from_normalized_signal(self, with_model_output):
+        # The remediation branch reads ChatResponse.truncated, not the raw
+        # provider string; a truncated stop names the num_ctx lever.
+        with_model_output("", done_reason="length")
+        with pytest.raises(AdapterError, match="overflowed num_ctx"):
+            ws.write_screenplay([{"type": "speech"}], template="# T")
+
+    def test_non_overflow_stop_gets_no_overflow_remedy(self, with_model_output):
+        with_model_output("", done_reason="stop")
+        with pytest.raises(AdapterError, match="without a context overflow"):
+            ws.write_screenplay([{"type": "speech"}], template="# T")
+
+    def test_unknown_stop_reason_says_backend_does_not_report(self, with_model_output):
+        # A backend with no stop reasons (fairlib until fair_llm #147) must say
+        # so, not claim or deny overflow it cannot see (principle 6).
+        with_model_output("", done_reason=None)
+        with pytest.raises(AdapterError, match="does not report stop reasons"):
             ws.write_screenplay([{"type": "speech"}], template="# T")
 
     def test_real_content_returned_stripped(self, with_model_output):

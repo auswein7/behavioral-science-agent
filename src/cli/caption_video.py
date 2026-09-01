@@ -15,6 +15,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from src.backends import build_caption_model
 from src.captioning import caption_video, write_json
 
 logger = logging.getLogger(__name__)
@@ -43,7 +44,10 @@ def main() -> None:
     records = caption_video(
         video_path,
         fps=float(os.environ.get("CAPTION_FPS", "1.0")),
-        model_name=os.environ.get("CAPTION_MODEL", "qwen3-vl:8b"),
+        model=build_caption_model(
+            os.environ.get("CAPTION_BACKEND", "ollama"),
+            os.environ.get("CAPTION_MODEL", "qwen3-vl:8b"),
+        ),
         context_captions=context_captions,
         max_dimension=max_dimension,
     )

@@ -74,6 +74,7 @@ class ToneConfig(_Deliverable):
 
 class CaptioningConfig(_Deliverable):
     caption_model: str
+    backend: Literal["ollama", "fairlib"] = "ollama"
     fps: float
     context_captions: int | None
     max_dimension: int | None
@@ -84,6 +85,7 @@ class CaptioningConfig(_Deliverable):
 
 class ScreenplayConfig(_Deliverable):
     ornith_model: str
+    backend: Literal["ollama", "fairlib"] = "ollama"
     num_ctx: int | None = None
 
 

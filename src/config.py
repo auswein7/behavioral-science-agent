@@ -79,6 +79,7 @@ def load_run_config(env: Mapping[str, str] | None = None) -> RunConfig:
             tone=ToneConfig(tone_model=env.get("TONE_MODEL", "iic/emotion2vec_plus_large")),
             captioning=CaptioningConfig(
                 caption_model=env.get("CAPTION_MODEL", "qwen3-vl:8b"),
+                backend=env.get("CAPTION_BACKEND", "ollama"),
                 fps=float(env.get("CAPTION_FPS", "1.0")),
                 context_captions=None if context_raw.lower() == "all" else int(context_raw),
                 max_dimension=None if max_dimension_raw.lower() == "none" else int(max_dimension_raw),
@@ -88,6 +89,7 @@ def load_run_config(env: Mapping[str, str] | None = None) -> RunConfig:
             ),
             screenplay=ScreenplayConfig(
                 ornith_model=env.get("ORNITH_MODEL", "ornith-1.5-255k"),
+                backend=env.get("SCREENPLAY_BACKEND", "ollama"),
                 num_ctx=_optional_int(env.get("ORNITH_NUM_CTX")),
             ),
             sampling=SamplingConfig(
