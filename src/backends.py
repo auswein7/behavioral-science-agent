@@ -204,3 +204,54 @@ def build_screenplay_model(
     raise ConfigurationError(
         f"unknown screenplay backend '{backend}'; expected 'ollama' or 'fairlib'"
     )
+
+
+def fairlib_coder_adapter(
+    model_name: str,
+    *,
+    temperature: float = 0.0,
+    seed: int | None = None,
+    num_ctx: int | None = None,
+) -> object:
+    """The fairlib adapter the coder agent runs on: a text-only OllamaAdapter
+    with deterministic sampling (principle 8: temperature 0 or a fixed seed
+    unless a run opts out). The coder is a fairlib SimpleAgent, so unlike the
+    two stages above it takes the fairlib adapter itself, not the seam."""
+    options: dict[str, object] = {"temperature": temperature}
+    if seed is not None:
+        options["seed"] = seed
+    if num_ctx is not None:
+        options["num_ctx"] = num_ctx
+    return _fairlib_ollama_adapter_cls()(model_name=model_name, vision=False, options=options)
+
+
+def build_coder_llm(
+    provider: str,
+    model_name: str,
+    *,
+    temperature: float = 0.0,
+    seed: int | None = None,
+    num_ctx: int | None = None,
+) -> object:
+    """Construct the coder stage's fairlib chat model for the configured
+    provider. Usage accounting is not bound here: the coder's SimpleAgent
+    owns the event bus and binds the model to it, so the tally attaches
+    there (FairlibAgentCoder usage_tally).
+
+    Only "ollama" is constructible: a remote provider (Anthropic, Gemini via
+    fair_llm #148) is a network egress and stays refused with the gate named
+    until the PII/egress boundary is bound on fairlib's security primitives
+    (adoption map item e, ADR first). The refusal is typed, not a fallback."""
+    if provider == "ollama":
+        return fairlib_coder_adapter(
+            model_name, temperature=temperature, seed=seed, num_ctx=num_ctx
+        )
+    if provider in {"anthropic", "openai", "gemini"}:
+        raise ConfigurationError(
+            f"CODER_PROVIDER={provider} is a network egress and is not yet "
+            "behind the PII/egress gate (adoption map item e; Gemini also waits "
+            "on fair_llm #148). Use CODER_PROVIDER=ollama."
+        )
+    raise ConfigurationError(
+        f"unknown coder provider '{provider}'; expected 'ollama'"
+    )

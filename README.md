@@ -35,6 +35,14 @@ A startup preflight validates the config, token, and required models before any 
 
 This writes intermediate JSON to `data/transcripts/`, `data/captions/`, and `data/screenplays/`, the final screenplay to `data/screenplays/<name>.screenplay.md`, and the run's provenance + de-identification gate records to `data/deliverables/` and `data/gate/`.
 
+The coder stage (OSU behavior codes, `docs/DATA_MODEL.md` 4.5) runs on the delivered utterance table, not the video, through a fairlib `SimpleAgent` over a local Ollama model:
+
+```
+python -m src.cli.code_utterances data/deliverables/<session_id>.utterances.json
+```
+
+It writes `<session_id>.coded.csv` / `.coded.json` and `<session_id>.coder_provenance.json`; `CODER_MODEL`, `CODER_ID` and the other `CODER_*` levers are documented in `.env.example`. Until OSU's codebook is loaded it codes with a placeholder codebook and says so.
+
 Each stage can also be run independently as a module — see `CLAUDE.md` for the full breakdown of the `src/cli/` entry points (transcribe-only, caption-only, tone-only, merge-only, write-only, utterance-table, faithfulness check).
 
 ## Development

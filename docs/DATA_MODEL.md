@@ -240,16 +240,40 @@ deliberately absent, because a report quoting a leak would itself leak.
 A deliverable ships only with `resolution` of `clean`, `cleared_by_review`,
 or `redacted`. `blocked` artifacts do not leave, full stop.
 
-### 4.5 CodedUtteranceRow (future - pending the OSU codebook)
+### 4.5 CodedUtteranceRow (`<session_id>.coded.csv` / `.coded.json`)
 
-UtteranceRow plus, per code in {AO, PO, PE, NE, I, Apology}: a binary value
-(or `NA` for confederate/experimenter rows) and a free-text `rationale`;
-plus `coder_model` and `coder_prompt_version`. Code columns follow OSU's
-observed naming convention `<CODE>_<coder_id>` (their sample uses
-`AO_gemini35flash` etc.), so multiple coders can sit side by side in one
-table. The code set is deliberately pluggable - it is defined by the codebook
-document, not hardcoded here, so it can change without a schema-version bump
-to the anonymizer deliverables.
+Produced by the coder stage (`src/coder`, `python -m src.cli.code_utterances
+<session>.utterances.json`) from the 4.1 table. Implemented 2026-09-02 as a
+scaffold: the pipeline, schemas and deliverable shape are final, the codebook
+is a placeholder (code names and one-line meanings only) until OSU's
+definitions arrive, and every run records which codebook it used.
+
+UtteranceRow plus:
+
+| field | type | note |
+|---|---|---|
+| codes | `{code: 0 or 1 or "NA"}` | one cell per codebook code; `NA` for confederate/experimenter rows, which never reach a model |
+| rationales | `{code: str}` | the model's one-sentence rationale per code; empty for `NA` rows |
+| coder_id | str | names the coder in the CSV columns (`CODER_ID` lever) |
+| coder_model | str | the model identifier the adapter describes itself with |
+| coder_prompt_version | str | content digest of `CODER_ROLE_PROMPT` |
+| codebook_version | str | `placeholder-...` until the OSU codebook is loaded |
+
+The CSV is the 4.1 columns, then `<CODE>_<coder_id>` and
+`<CODE>_<coder_id>_rationale` per code in codebook order (OSU's observed
+naming, e.g. `AO_gemini35flash`, so several coders can sit side by side),
+then the three provenance columns. The JSON form is rewritten after every
+coded row and is the resumption point for an interrupted run. The code set
+is pluggable: it is the `Codebook` document (`src/coder/codebook.py`), not
+the schema, so it can change without a schema-version bump; the validator
+enforces that the model's judgments carry exactly the codebook's codes.
+
+The model's per-utterance reply is `UtteranceCoding` (`uid`, `judgments:
+{code: {value, rationale}}`), validated by fairlib's `SimpleAgent.arun`
+validator with the framework's own retries; exhaustion is a typed
+`CoderError` carrying the uid. A companion `<session_id>.coder_provenance.json`
+records the resolved `CoderConfig`, codebook version and digest, prompt
+version, model, timing and `StageUsage` (4.3) for the stage.
 
 ## 5. Identifier and label schemes
 

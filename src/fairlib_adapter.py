@@ -109,8 +109,28 @@ class FairlibUsageSubscriber:
     def __init__(self, tally: UsageTally) -> None:
         self.tally = tally
 
+    def subscribe(self, bus: object) -> None:
+        """Attach to a bus the caller owns - a SimpleAgent's, which the agent
+        binds to its model itself (it rebinds the model at construction, so
+        a bus bound here beforehand would be displaced).
+
+        Raises ConfigurationError when the installed fairlib predates the
+        event contract (design principle 6: a wiring fault, found before
+        the first call)."""
+        try:
+            from fairlib.core.events import ModelInvocationEvent
+        except ImportError as e:
+            raise ConfigurationError(
+                "usage accounting through fairlib events needs a fair-llm that "
+                "ships ModelInvocationEvent (fair_llm issue #170, PR #175); the "
+                "installed one does not."
+            ) from e
+        bus.subscribe(ModelInvocationEvent, self._on_invocation)  # type: ignore[attr-defined]
+        self.tally.source = "fairlib_events"
+
     def bind(self, adapter: EventBindingAdapter) -> None:
-        """Wire this subscriber to one adapter.
+        """Wire this subscriber to one bare adapter on a fresh bus (the
+        stage-injection path, where no agent owns the model).
 
         Raises ConfigurationError when the installed fairlib predates the
         event contract, or when fairlib refuses the bind (an adapter whose
@@ -121,7 +141,6 @@ class FairlibUsageSubscriber:
                 ConfigurationError as FairlibConfigurationError,
             )
             from fairlib.core.event_bus import AgentEventBus
-            from fairlib.core.events import ModelInvocationEvent
         except ImportError as e:
             raise ConfigurationError(
                 "usage accounting through fairlib events needs a fair-llm that "
@@ -129,14 +148,13 @@ class FairlibUsageSubscriber:
                 "installed one does not."
             ) from e
         bus = AgentEventBus()
-        bus.subscribe(ModelInvocationEvent, self._on_invocation)
+        self.subscribe(bus)
         try:
             adapter.bind_event_bus(bus)
         except FairlibConfigurationError as e:
             raise ConfigurationError(
                 f"fairlib refused to bind usage accounting to the adapter: {e}"
             ) from e
-        self.tally.source = "fairlib_events"
 
     def _on_invocation(self, event: object) -> None:
         self.tally.calls += 1

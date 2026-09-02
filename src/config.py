@@ -22,6 +22,7 @@ from src import prompts
 from src.errors import ConfigurationError
 from src.schemas import (
     CaptioningConfig,
+    CoderConfig,
     RunConfig,
     SamplingConfig,
     ScreenplayConfig,
@@ -38,6 +39,7 @@ _PROMPT_ASSETS = (
     "CAPTION_ANONYMIZATION_RULES",
     "FIRST_FRAME_PROMPT",
     "CHANGE_PROMPT",
+    "CODER_ROLE_PROMPT",
 )
 
 
@@ -154,3 +156,25 @@ def preflight(
             config.captioning.caption_model,
         )
     logger.info("Preflight passed: config valid, Ollama reachable, required models present")
+
+
+def load_coder_config(env: Mapping[str, str] | None = None) -> CoderConfig:
+    """Build the typed CoderConfig from an environment mapping (os.environ by
+    default). Same contract as load_run_config: any malformed value is a
+    ConfigurationError naming the problem; nothing else reads the levers."""
+    if env is None:
+        env = os.environ
+    try:
+        return CoderConfig(
+            coder_model=env.get("CODER_MODEL", "qwen2.5:14b"),
+            provider=env.get("CODER_PROVIDER", "ollama"),
+            coder_id=env.get("CODER_ID", "fairlib_local"),
+            context_utterances=int(env.get("CODER_CONTEXT_UTTERANCES", "5")),
+            max_retries=int(env.get("CODER_MAX_RETRIES", "2")),
+            max_steps=int(env.get("CODER_MAX_STEPS", "3")),
+            num_ctx=_optional_int(env.get("CODER_NUM_CTX")),
+            temperature=float(env.get("SAMPLING_TEMPERATURE", "0.0")),
+            seed=_optional_int(env.get("SAMPLING_SEED")),
+        )
+    except (ValueError, ValidationError) as exc:
+        raise ConfigurationError(f"invalid coder configuration: {exc}") from exc

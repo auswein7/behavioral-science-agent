@@ -27,3 +27,15 @@ class ArtifactError(PipelineError):
 
 class AdapterError(PipelineError):
     """A model-backend call failed after exhausting its retries."""
+
+
+class CoderError(PipelineError):
+    """The coder stage could not produce a valid coding for one utterance:
+    the model exhausted its validated retries or its step budget. Carries
+    the uid so a partial run says exactly where it stopped."""
+
+    def __init__(self, message: str, *, uid: str, attempts: int, last_feedback: str = "") -> None:
+        super().__init__(message)
+        self.uid = uid
+        self.attempts = attempts
+        self.last_feedback = last_feedback

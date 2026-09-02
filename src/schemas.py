@@ -94,6 +94,23 @@ class SamplingConfig(_Deliverable):
     seed: int | None = None
 
 
+class CoderConfig(_Deliverable):
+    """Typed configuration for the coder stage (DATA_MODEL 4.5); the .env
+    file feeds this. provider names the fairlib adapter family the agent's
+    model comes from; only local providers are constructible until the
+    egress gate (adoption map item e) binds a remote one."""
+
+    coder_model: str
+    provider: Literal["ollama"] = "ollama"
+    coder_id: str = Field(min_length=1, pattern=r"^[A-Za-z0-9_]+$")
+    context_utterances: int = Field(default=5, ge=0)
+    max_retries: int = Field(default=2, ge=0)
+    max_steps: int = Field(default=3, ge=1)
+    num_ctx: int | None = None
+    temperature: float = 0.0
+    seed: int | None = None
+
+
 class RunConfig(_Deliverable):
     """Typed configuration for one run (DATA_MODEL 2.3); the .env file feeds this."""
 
@@ -194,6 +211,46 @@ class UtteranceRow(_Deliverable):
     tone: str
     low_confidence: bool
     nonverbal_notes: str
+
+
+CodeValue = Literal[0, 1]
+CodeCell = Literal[0, 1, "NA"]
+
+
+class CodeJudgment(_Deliverable):
+    """The model's decision on one code for one utterance (DATA_MODEL 4.5):
+    a binary value and the free-text rationale OSU asked for."""
+
+    value: CodeValue
+    rationale: str = Field(min_length=1)
+
+
+class UtteranceCoding(_Deliverable):
+    """The coder model's validated output for one utterance: one judgment
+    per code in the codebook, keyed by code. The validator, not this model,
+    checks that the key set equals the codebook's, because the code set is
+    pluggable (DATA_MODEL 4.5) and this schema must not hardcode it."""
+
+    uid: str
+    judgments: dict[str, CodeJudgment]
+
+
+class CodedUtteranceRow(UtteranceRow):
+    """UtteranceRow plus the coder stage's columns (DATA_MODEL 4.5).
+
+    codes holds one cell per codebook code: 0 or 1 from the model, or the
+    literal NA for rows the coder never sends to a model (confederate and
+    experimenter roles, following OSU's sample). rationales has one entry
+    per coded code and is empty for NA rows. The CSV writer flattens codes
+    into <CODE>_<coder_id> columns so several coders can sit side by side.
+    """
+
+    codes: dict[str, CodeCell]
+    rationales: dict[str, str]
+    coder_id: str
+    coder_model: str
+    coder_prompt_version: str
+    codebook_version: str
 
 
 class NameReplacement(_Internal):
