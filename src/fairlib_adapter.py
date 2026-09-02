@@ -20,13 +20,20 @@ verbatim raw_done_reason. The mapping here sets ChatResponse.truncated from
 the sentinel and passes raw_done_reason through as done_reason; against a
 fairlib that predates #147, replies simply have no usage attribute and every
 accounting field stays None (the seam's honest tri-state, principle 6).
+
+Per-call accounting (fair_llm issue #170, contract fixed in PR #175): every
+one-shot call on a fairlib adapter emits one ModelInvocationEvent on the bus
+bound with adapter.bind_event_bus. FairlibUsageSubscriber below turns that
+stream into the per-stage UsageTally that RunProvenance records, so the
+framework's own accounting is the record and this seam reads nothing off
+replies for it (observability principle: stages emit, consumers subscribe).
 """
 
 import logging
 from collections.abc import Callable, Sequence
 from typing import Protocol
 
-from src.adapters import AbstractChatModel, ChatMessage, ChatResponse
+from src.adapters import AbstractChatModel, ChatMessage, ChatResponse, UsageTally
 from src.errors import AdapterError, ConfigurationError
 
 logger = logging.getLogger(__name__)
@@ -38,6 +45,12 @@ class FairlibChatAdapter(Protocol):
     def invoke(self, messages: list, **kwargs: object) -> object: ...
 
     def get_model_capabilities(self) -> dict: ...
+
+
+class EventBindingAdapter(Protocol):
+    """The slice a fairlib adapter grows with PR #175: one bus per adapter."""
+
+    def bind_event_bus(self, bus: object) -> None: ...
 
 
 def _fairlib_symbols() -> tuple[type, type[Exception], type[Exception]]:
@@ -67,6 +80,79 @@ def fairlib_reports_usage() -> bool:
     except ImportError:
         return False
     return "usage" in {f.name for f in dataclasses.fields(Message)}
+
+
+def fairlib_emits_invocation_events() -> bool:
+    """True when the installed fairlib carries the #170 contract (PR #175):
+    the ModelInvocationEvent type and the bus it is bound through. False for
+    a missing fairlib too, on the same reasoning as fairlib_reports_usage."""
+    try:
+        from fairlib.core.event_bus import AgentEventBus  # noqa: F401
+        from fairlib.core.events import ModelInvocationEvent  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+class FairlibUsageSubscriber:
+    """Feeds a UsageTally from fairlib's own per-call accounting.
+
+    Binds a fresh event bus to one fairlib adapter and subscribes to its
+    ModelInvocationEvent: one event per one-shot call, outcome completed or
+    failed, an optional Usage record, a request digest and never content.
+    One bus per adapter is what gives the tally its stage attribution - the
+    event itself carries no stage field. Unlike a reply-side wrapper this
+    sees failed calls, and the tally's source says the numbers are the
+    framework's.
+    """
+
+    def __init__(self, tally: UsageTally) -> None:
+        self.tally = tally
+
+    def bind(self, adapter: EventBindingAdapter) -> None:
+        """Wire this subscriber to one adapter.
+
+        Raises ConfigurationError when the installed fairlib predates the
+        event contract, or when fairlib refuses the bind (an adapter whose
+        identity cannot be resolved from describe_config): both are wiring
+        faults, found before the first call (design principle 6)."""
+        try:
+            from fairlib.core.errors import (
+                ConfigurationError as FairlibConfigurationError,
+            )
+            from fairlib.core.event_bus import AgentEventBus
+            from fairlib.core.events import ModelInvocationEvent
+        except ImportError as e:
+            raise ConfigurationError(
+                "usage accounting through fairlib events needs a fair-llm that "
+                "ships ModelInvocationEvent (fair_llm issue #170, PR #175); the "
+                "installed one does not."
+            ) from e
+        bus = AgentEventBus()
+        bus.subscribe(ModelInvocationEvent, self._on_invocation)
+        try:
+            adapter.bind_event_bus(bus)
+        except FairlibConfigurationError as e:
+            raise ConfigurationError(
+                f"fairlib refused to bind usage accounting to the adapter: {e}"
+            ) from e
+        self.tally.source = "fairlib_events"
+
+    def _on_invocation(self, event: object) -> None:
+        self.tally.calls += 1
+        outcome = getattr(event, "outcome", None)
+        # ModelInvocationOutcome is a str enum whose values are the contract
+        # strings; comparing the value keeps the enum type out of this seam.
+        if getattr(outcome, "value", outcome) != "completed":
+            self.tally.calls_failed += 1
+        usage = getattr(event, "usage", None)
+        if usage is None:
+            return
+        if usage.prompt_tokens is None and usage.completion_tokens is None:
+            return
+        self.tally.calls_reporting += 1
+        self.tally.prompt_tokens += usage.prompt_tokens or 0
+        self.tally.completion_tokens += usage.completion_tokens or 0
 
 
 class FairlibChatModel(AbstractChatModel):

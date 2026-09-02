@@ -117,34 +117,53 @@ def ensure_ollama_model(
 class UsageTally:
     """Running totals of per-call usage across one stage's model calls.
 
-    calls_reporting counts the calls whose backend actually returned token
+    calls counts attempts, calls_failed the attempts that raised, and
+    calls_reporting the replies whose backend actually returned token
     accounting; a tally with calls_reporting == 0 means usage is unknown for
-    the stage, not zero (the same honest tri-state as ChatResponse)."""
+    the stage, not zero (the same honest tri-state as ChatResponse).
+
+    source names what filled the tally: "fairlib_events" when the numbers are
+    the framework's own ModelInvocationEvent accounting (fair_llm #170),
+    "seam_wrapper" when UsageRecordingModel read them off replies at this
+    seam. Provenance records it so framework accounting and the interim
+    wrapper's are never confused (design principle 6)."""
 
     calls: int = 0
+    calls_failed: int = 0
     calls_reporting: int = 0
     prompt_tokens: int = 0
     completion_tokens: int = 0
+    source: str | None = None
 
 
 class UsageRecordingModel(AbstractChatModel):
     """Delegating wrapper that tallies each reply's usage for run provenance.
 
     Cross-cutting accounting belongs to the adapter layer, not to stages
-    (design principle 7): entry points wrap whichever backend the factory
-    built, the stage sees only AbstractChatModel, and the tally feeds
-    RunProvenance.stage_usage after the stage finishes."""
+    (design principle 7): the backend factory wraps a backend that emits no
+    accounting events of its own, the stage sees only AbstractChatModel, and
+    the tally feeds RunProvenance.stage_usage after the stage finishes. A
+    fairlib backend that emits ModelInvocationEvent is not wrapped: its
+    events feed the same tally through FairlibUsageSubscriber
+    (src/fairlib_adapter.py), so the framework's accounting is the record."""
 
-    def __init__(self, inner: AbstractChatModel) -> None:
+    def __init__(self, inner: AbstractChatModel, tally: UsageTally | None = None) -> None:
         self._inner = inner
-        self.tally = UsageTally()
+        self.tally = tally if tally is not None else UsageTally()
+        self.tally.source = "seam_wrapper"
 
     def ensure_available(self) -> None:
         self._inner.ensure_available()
 
     def invoke(self, messages: Sequence[ChatMessage], **options: object) -> ChatResponse:
-        response = self._inner.invoke(messages, **options)
         self.tally.calls += 1
+        try:
+            response = self._inner.invoke(messages, **options)
+        except Exception:
+            # Count the attempt and let the typed error keep travelling; the
+            # wrapper adds accounting, never handling.
+            self.tally.calls_failed += 1
+            raise
         if response.prompt_eval_count is not None or response.eval_count is not None:
             self.tally.calls_reporting += 1
             self.tally.prompt_tokens += response.prompt_eval_count or 0

@@ -161,6 +161,39 @@ class TestUsageRecordingModel:
         assert inner.ensured == 1
         assert model.capabilities() == {"vision": True}
 
+    def test_failed_attempt_is_counted_then_reraised(self):
+        # The wrapper adds accounting, never handling: the typed error keeps
+        # travelling and the attempt shows up as a failed call, so a stage
+        # that died mid-way is legible in provenance (principle 6).
+        from src.adapters import AbstractChatModel, UsageRecordingModel
+        from src.errors import AdapterError
+
+        class Failing(AbstractChatModel):
+            def ensure_available(self):
+                pass
+
+            def invoke(self, messages, **options):
+                raise AdapterError("daemon down")
+
+            def capabilities(self):
+                return {"vision": False}
+
+        model = UsageRecordingModel(Failing())
+        with pytest.raises(AdapterError, match="daemon down"):
+            model.invoke([ChatMessage(role="user", content="p")])
+        tally = model.tally
+        assert (tally.calls, tally.calls_failed, tally.calls_reporting) == (1, 1, 0)
+
+    def test_external_tally_is_shared_and_labeled(self):
+        from src.adapters import ChatResponse, UsageRecordingModel, UsageTally
+
+        tally = UsageTally()
+        model = UsageRecordingModel(_CountingModel([ChatResponse("a", "m")]), tally)
+        model.invoke([ChatMessage(role="user", content="p")])
+        assert model.tally is tally
+        assert tally.calls == 1
+        assert tally.source == "seam_wrapper"
+
 
 class TestCapabilities:
     def test_vision_declared(self, fake):

@@ -4,10 +4,22 @@ import dataclasses
 
 import pytest
 
-from src.adapters import OllamaChatModel
+from src.adapters import OllamaChatModel, UsageRecordingModel, UsageTally
 from src.backends import build_caption_model, build_screenplay_model
 from src.errors import ConfigurationError
-from src.fairlib_adapter import FairlibChatModel
+from src.fairlib_adapter import (
+    FairlibChatModel,
+    fairlib_emits_invocation_events,
+    fairlib_reports_usage,
+)
+
+
+def _vision_fairlib_installed() -> bool:
+    try:
+        import fairlib.core.message as message_mod
+    except ImportError:
+        return False
+    return "images" in {f.name for f in dataclasses.fields(message_mod.Message)}
 
 
 class TestBuildCaptionModel:
@@ -16,6 +28,31 @@ class TestBuildCaptionModel:
         assert isinstance(model, OllamaChatModel)
         assert model.model_name == "qwen3-vl:8b"
         assert model.auto_pull is True
+
+    def test_ollama_backend_with_tally_gets_the_seam_wrapper(self):
+        # The built-in adapter emits no accounting events, so the factory
+        # wraps it; the caller's tally is the one that fills, labeled.
+        tally = UsageTally()
+        model = build_caption_model("ollama", "qwen3-vl:8b", usage_tally=tally)
+        assert isinstance(model, UsageRecordingModel)
+        assert model.tally is tally
+        assert tally.source == "seam_wrapper"
+        assert model.capabilities() == {"vision": True}
+
+    def test_fairlib_backend_with_tally_uses_framework_events_when_shipped(self):
+        # With the #170 contract installed the fairlib model is handed back
+        # unwrapped and the tally is fairlib's; without it, the factory
+        # degrades to the wrapper and says so in the tally (principle 6).
+        if not _vision_fairlib_installed():
+            pytest.skip("installed fairlib predates issue #146 vision support")
+        tally = UsageTally()
+        model = build_caption_model("fairlib", "qwen3-vl:8b", usage_tally=tally)
+        if fairlib_emits_invocation_events():
+            assert isinstance(model, FairlibChatModel)
+            assert tally.source == "fairlib_events"
+        else:
+            assert isinstance(model, UsageRecordingModel)
+            assert tally.source == "seam_wrapper"
 
     def test_unknown_backend_is_typed_error_not_a_fallback(self):
         # CLI entry points read the lever straight from the environment, so
@@ -47,13 +84,29 @@ class TestBuildScreenplayModel:
         assert model.auto_pull is False
         assert model.unavailable_hint == "hint"
 
+    def test_ollama_backend_with_tally_gets_the_seam_wrapper(self):
+        tally = UsageTally()
+        model = build_screenplay_model("ollama", "ornith-1.5-255k", usage_tally=tally)
+        assert isinstance(model, UsageRecordingModel)
+        assert tally.source == "seam_wrapper"
+
+    def test_fairlib_backend_with_tally_uses_framework_events_when_shipped(self):
+        if not fairlib_reports_usage():
+            pytest.skip("installed fairlib predates issue #147 usage telemetry")
+        tally = UsageTally()
+        model = build_screenplay_model("fairlib", "ornith-1.5-255k", usage_tally=tally)
+        if fairlib_emits_invocation_events():
+            assert isinstance(model, FairlibChatModel)
+            assert tally.source == "fairlib_events"
+        else:
+            assert isinstance(model, UsageRecordingModel)
+            assert tally.source == "seam_wrapper"
+
     def test_fairlib_backend_capability_gated_on_147(self):
         # The gate probes the installed fairlib: without #147 usage telemetry
         # the lever is refused with the blocker named (a constructed model
         # would silently degrade the overflow diagnostic, principle 6); with
         # it, construction succeeds and Ornith declares no vision.
-        from src.fairlib_adapter import fairlib_reports_usage
-
         if fairlib_reports_usage():
             model = build_screenplay_model(
                 "fairlib", "ornith-1.5-255k", unavailable_hint="hint"

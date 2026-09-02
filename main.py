@@ -28,7 +28,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from src.adapters import UsageRecordingModel, UsageTally
+from src.adapters import UsageTally
 from src.backends import build_caption_model, build_screenplay_model
 from src.captioning import caption_video
 from src.captioning import write_json as write_captions_json
@@ -204,10 +204,12 @@ def main() -> None:
     if start <= STAGES.index("caption"):
         logger.info("[3/5] Captioning video frames (fixed-interval + speech-start): %s", video_path)
         t0 = time.monotonic()
-        caption_model = UsageRecordingModel(
-            build_caption_model(config.captioning.backend, config.captioning.caption_model)
+        usage_tallies["caption"] = UsageTally()
+        caption_model = build_caption_model(
+            config.captioning.backend,
+            config.captioning.caption_model,
+            usage_tally=usage_tallies["caption"],
         )
-        usage_tallies["caption"] = caption_model.tally
         caption_records = caption_video(
             video_path,
             fps=config.captioning.fps,
@@ -240,14 +242,13 @@ def main() -> None:
     logger.info("[5/5] Writing final screenplay with Ornith")
     t0 = time.monotonic()
     template = TEMPLATE_PATH.read_text()
-    screenplay_model = UsageRecordingModel(
-        build_screenplay_model(
-            config.screenplay.backend,
-            config.screenplay.ornith_model,
-            unavailable_hint=ORNITH_UNAVAILABLE_HINT,
-        )
+    usage_tallies["screenplay"] = UsageTally()
+    screenplay_model = build_screenplay_model(
+        config.screenplay.backend,
+        config.screenplay.ornith_model,
+        unavailable_hint=ORNITH_UNAVAILABLE_HINT,
+        usage_tally=usage_tallies["screenplay"],
     )
-    usage_tallies["screenplay"] = screenplay_model.tally
     screenplay_md = write_screenplay(
         events,
         template,
@@ -274,7 +275,9 @@ def main() -> None:
         stage_usage={
             stage: StageUsage(
                 calls=tally.calls,
+                calls_failed=tally.calls_failed,
                 calls_reporting=tally.calls_reporting,
+                source=tally.source,
                 prompt_tokens=tally.prompt_tokens if tally.calls_reporting else None,
                 completion_tokens=(
                     tally.completion_tokens if tally.calls_reporting else None

@@ -215,7 +215,7 @@ Everything needed to reproduce or audit the run without the Tier A/B data.
 | prompt_versions | dict[str, str] | prompt asset -> version id |
 | software | dict[str, str] | python, ollama, pinned package versions |
 | stage_timings | dict[str, float] | wall seconds per stage |
-| stage_usage | dict[str, StageUsage] | per LLM stage: calls, calls_reporting, prompt_tokens, completion_tokens; token totals are null when no call reported accounting (unknown, not zero) |
+| stage_usage | dict[str, StageUsage] | per LLM stage: calls (attempts), calls_failed, calls_reporting, prompt_tokens, completion_tokens, source; token totals are null when no call reported accounting (unknown, not zero); source is `fairlib_events` when the framework's ModelInvocationEvent stream did the counting (fair_llm #170) or `seam_wrapper` when this repo's reply-side wrapper did, null on records written before the field existed |
 
 ### 4.4 ScrubReport - two forms, one gate
 

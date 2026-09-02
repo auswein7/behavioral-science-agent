@@ -219,12 +219,18 @@ class StageUsage(_Deliverable):
 
     Token totals are None when no call in the stage reported accounting
     (unknown, not zero); calls_reporting says how many did, so a partial
-    total is legible as partial."""
+    total is legible as partial. calls counts attempts and calls_failed the
+    attempts that raised. source says who counted: the framework's own
+    ModelInvocationEvent stream (fairlib_events, fair_llm #170) or this
+    repo's reply-side wrapper (seam_wrapper); None on records written before
+    the field existed."""
 
     calls: int
     calls_reporting: int
+    calls_failed: int = 0
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
+    source: Literal["fairlib_events", "seam_wrapper"] | None = None
 
 
 class RunProvenance(_Deliverable):

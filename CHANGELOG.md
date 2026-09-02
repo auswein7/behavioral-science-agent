@@ -9,6 +9,13 @@ prototype history in the upstream repo.
 Forked 2026-08-30 from `Andrew-D-Gibson/Screenplay_Video_Anonymizer` (d4af4db).
 
 ### Added
+- Per-stage usage accounting from fairlib's own `ModelInvocationEvent`
+  (fair_llm #170, PR #175): `FairlibUsageSubscriber` binds a bus per stage
+  adapter and feeds the `UsageTally` that `RunProvenance.stage_usage`
+  records, replacing the reply-side wrapper for the fairlib backend. The
+  backend factory wires it; `StageUsage` gains `calls_failed` and `source`
+  (`fairlib_events` / `seam_wrapper`) so a run on a pre-#175 fairlib is
+  legibly degraded, not silently different.
 - Data model spec (`docs/DATA_MODEL.md`) with Tier A/B/C classification, and
   its executable form in `src/schemas.py` (Pydantic models for every stage
   boundary; Tier C deliverables are frozen and reject undeclared fields).
