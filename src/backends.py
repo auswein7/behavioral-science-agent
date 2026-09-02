@@ -19,6 +19,13 @@ ModelInvocationEvent (fair_llm #170, PR #175) feeds the caller's UsageTally
 from the framework's events; the built-in backend, and a fairlib that
 predates the event contract, get the seam wrapper. The tally records which
 source filled it.
+
+The raw fairlib adapters the factories wrap are built by
+fairlib_caption_adapter and fairlib_screenplay_adapter, exposed so the
+conformance guard (tests/test_fairlib_conformance.py) runs fairlib's own
+chat-model suite over exactly the objects production constructs, not a
+look-alike; a construction that drifts from the guard is the drift the guard
+exists to catch.
 """
 
 import logging
@@ -55,6 +62,19 @@ def _fairlib_ollama_adapter_cls() -> type:
             "'ollama' backend."
         ) from e
     return OllamaAdapter
+
+
+def fairlib_caption_adapter(model_name: str) -> object:
+    """The fairlib adapter the captioning stage's fairlib backend wraps: a
+    vision-capable OllamaAdapter, so JPEG frames are carried, not refused."""
+    return _fairlib_ollama_adapter_cls()(model_name=model_name, vision=True)
+
+
+def fairlib_screenplay_adapter(model_name: str) -> object:
+    """The fairlib adapter the screenplay stage's fairlib backend wraps.
+    Ornith is text-only, so no vision; images sent by mistake get fairlib's
+    own payload-time refusal (the upstream non-vision ruling)."""
+    return _fairlib_ollama_adapter_cls()(model_name=model_name, vision=False)
 
 
 def _with_seam_accounting(
@@ -115,7 +135,7 @@ def build_caption_model(
     backend supports (module docstring)."""
     if backend == "fairlib":
         return _fairlib_model(
-            adapter=_fairlib_ollama_adapter_cls()(model_name=model_name, vision=True),
+            adapter=fairlib_caption_adapter(model_name),
             model_name=model_name,
             availability_check=partial(ensure_ollama_model, model_name, auto_pull=True),
             description="frame caption",
@@ -169,10 +189,8 @@ def build_screenplay_model(
                 "context-overflow diagnostic depends on it. Use "
                 "SCREENPLAY_BACKEND=ollama, or install a fair-llm with #147."
             )
-        # Ornith is text-only, so no vision; images sent by mistake get
-        # fairlib's own payload-time refusal.
         return _fairlib_model(
-            adapter=_fairlib_ollama_adapter_cls()(model_name=model_name, vision=False),
+            adapter=fairlib_screenplay_adapter(model_name),
             model_name=model_name,
             availability_check=partial(
                 ensure_ollama_model,

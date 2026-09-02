@@ -9,6 +9,10 @@ jobs:
   lint-and-test:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      # Read access to the private fair_llm repo. Unset on the fork by
+      # default; the maintainer adds it to enable the conformance guard.
+      FAIR_LLM_TOKEN: ${{ secrets.FAIR_LLM_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -27,6 +31,14 @@ jobs:
           pip install -r requirements.txt
           pip install ruff
           python -m spacy download en_core_web_sm
+
+      # fairlib conformance guard (tests/test_fairlib_conformance.py): runs
+      # the upstream chat-model suite over the adapters this repo constructs,
+      # so a fair_llm main change that breaks the contract fails here first.
+      # Without the token the install is skipped and the guard self-skips.
+      - name: Install fair-llm (conformance guard)
+        if: env.FAIR_LLM_TOKEN != ''
+        run: pip install "fair-llm @ git+https://${FAIR_LLM_TOKEN}@github.com/USAFA-AI-Center/fair_llm.git@main"
 
       # Explicit flags rather than a config file, pinned to match local runs.
       - name: Lint
