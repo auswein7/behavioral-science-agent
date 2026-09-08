@@ -46,6 +46,18 @@ now the only Gemini destination fairlib declares is the fixed public endpoint
 `generativelanguage.googleapis.com:443`, and the destination side of the gate
 is correspondingly simpler: one known host, not a configurable one.
 
+Second leg of the same guarantee (fairlib PR #186 round 1, 2026-09-08): a call
+may pass GENERATION OPTIONS ONLY. Every other request-config field, the SDK's
+`http_options` among them, is refused with a typed error before any call. This
+matters to this ADR more than it looks: a fixed declared destination is only
+worth having if a caller cannot move the destination at call time, and
+`http_options` could have redirected the request, API key included, to another
+host. Without that refusal the capability grant would have named a host the
+call was free to ignore. The destination is now unmovable from both directions
+- not configurable at construction, not overridable per call - which is what
+makes "the grant names where bytes may go" a true statement rather than a
+convention.
+
 The failure mode this ADR exists to prevent is the one design principle 3
 names: "there is no path where a local-only stage can be pointed at a remote
 endpoint by changing one string."
