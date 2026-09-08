@@ -17,6 +17,7 @@ the row text is treated as untrusted data inside the prompt.
 """
 
 import asyncio
+import hashlib
 import json
 import logging
 from abc import ABC, abstractmethod
@@ -169,19 +170,47 @@ class FairlibAgentCoder(AbstractUtteranceCoder):
         except Exception as exc:
             raise AdapterError(f"coder model cannot describe itself: {exc}") from exc
 
-    def _agent(self):
-        from fairlib import (
-            RoleDefinition,
-            SimpleAgent,
-            SimpleReActPlanner,
-            ToolExecutor,
-            ToolRegistry,
-            WorkingMemory,
-        )
+    @property
+    def framework_provenance(self) -> dict[str, str]:
+        """What the framework contributed to this run, for the run record.
+
+        The coder's system prompt is assembled by fairlib's planner, not by
+        this repo, so digesting our own CODER_ROLE_PROMPT does not describe
+        what the model actually saw. Measured 2026-09-08: two fairlib trees
+        both reporting version 0.6.2 rendered different planner prompts and
+        changed the codes on 3 of 5 utterances, and nothing in the run record
+        distinguished them. The version is kept because it becomes meaningful
+        once releases are cut; the digest is the field that discriminates.
+        """
+        import importlib.metadata as metadata
+
+        try:
+            version = metadata.version("fair-llm")
+        except metadata.PackageNotFoundError:
+            version = "unknown"
+        planner, _ = self._planner()
+        prompt = planner.render_system_prompt()
+        digest = hashlib.blake2b(prompt.encode("utf-8"), digest_size=16).hexdigest()
+        return {
+            "fairlib_version": version,
+            "planner_prompt_digest": digest,
+            "planner_prompt_chars": str(len(prompt)),
+        }
+
+    def _planner(self):
+        """The planner exactly as the agent gets it, so a digest taken here
+        describes the prompt the coding calls actually used."""
+        from fairlib import RoleDefinition, SimpleReActPlanner, ToolRegistry
 
         registry = ToolRegistry()
         planner = SimpleReActPlanner(self._llm, registry)
         planner.prompt_builder.role_definition = RoleDefinition(self._role)
+        return planner, registry
+
+    def _agent(self):
+        from fairlib import SimpleAgent, ToolExecutor, WorkingMemory
+
+        planner, registry = self._planner()
         return SimpleAgent(
             llm=self._llm,
             planner=planner,

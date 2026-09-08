@@ -175,3 +175,38 @@ class TestBuildCoderLlm:
         assert isinstance(llm, mal.OllamaAdapter)
         assert llm.describe_config().model_name == "qwen3:8b"
         assert llm.get_model_capabilities()["vision"] is False
+
+
+class TestFrameworkProvenance:
+    """The coder's system prompt is fairlib's, not ours, so the run record has
+    to carry a digest of what the model actually saw. Two trees reporting the
+    same version rendered different planner prompts and changed 3 of 5 codes
+    (2026-09-08); the version did not discriminate and the digest did."""
+
+    def test_reports_version_digest_and_length(self):
+        coder = FairlibAgentCoder(llm=ScriptedChatModel([]), codebook=placeholder_codebook())
+        prov = coder.framework_provenance
+        assert set(prov) == {"fairlib_version", "planner_prompt_digest", "planner_prompt_chars"}
+        assert len(prov["planner_prompt_digest"]) == 32
+        assert int(prov["planner_prompt_chars"]) > 0
+
+    def test_digest_is_stable_for_the_same_codebook(self):
+        book = placeholder_codebook()
+        first = FairlibAgentCoder(llm=ScriptedChatModel([]), codebook=book).framework_provenance
+        second = FairlibAgentCoder(llm=ScriptedChatModel([]), codebook=book).framework_provenance
+        assert first == second
+
+    def test_digest_tracks_the_rendered_prompt(self):
+        # The digest must cover the role text the codebook produces, or a
+        # codebook swap would leave the run record unchanged.
+        from src.coder.codebook import Codebook, CodeDefinition
+
+        other = Codebook(
+            version="test-codebook",
+            codes=(CodeDefinition(code="XX", name="Example", definition="a different code"),),
+        )
+        a = FairlibAgentCoder(llm=ScriptedChatModel([]), codebook=placeholder_codebook())
+        b = FairlibAgentCoder(llm=ScriptedChatModel([]), codebook=other)
+        assert a.framework_provenance["planner_prompt_digest"] != b.framework_provenance[
+            "planner_prompt_digest"
+        ]

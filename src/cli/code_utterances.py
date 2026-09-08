@@ -117,6 +117,11 @@ def main(argv: list[str] | None = None) -> int:
         "codebook_version": codebook.version,
         "codebook_digest": codebook.digest(),
         "prompt_versions": {"CODER_ROLE_PROMPT": prompt_versions()["CODER_ROLE_PROMPT"]},
+        # Our prompt digest does not describe what the model saw: fairlib's
+        # planner assembles the system prompt around it. Without this the run
+        # record cannot tell two framework versions apart (2026-09-08: same
+        # reported version, different planner prompt, different codes).
+        "framework": coder.framework_provenance,
         "coder_model": coder.model_name,
         "stage_timings": {"coder": round(time.monotonic() - clock, 2)},
         "stage_usage": {

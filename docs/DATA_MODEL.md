@@ -273,7 +273,22 @@ The model's per-utterance reply is `UtteranceCoding` (`uid`, `judgments:
 validator with the framework's own retries; exhaustion is a typed
 `CoderError` carrying the uid. A companion `<session_id>.coder_provenance.json`
 records the resolved `CoderConfig`, codebook version and digest, prompt
-version, model, timing and `StageUsage` (4.3) for the stage.
+version, model, timing and `StageUsage` (4.3) for the stage, plus a
+`framework` block:
+
+| field | type | meaning |
+|---|---|---|
+| fairlib_version | str | installed `fair-llm` version, or `unknown` |
+| planner_prompt_digest | str | blake2b-128 of the planner system prompt as rendered for this run |
+| planner_prompt_chars | str | length of that prompt |
+
+The digest is there because the coder's system prompt is assembled by
+fairlib's planner, not by this repo, so `coder_prompt_version` alone does not
+describe what the model saw. Two fairlib trees that both reported version
+0.6.2 rendered different planner prompts and changed the codes on 3 of 5
+utterances (2026-09-08); the version field did not distinguish them and the
+digest did. Any coder result compared across framework versions is only
+reproducible with this block present.
 
 ## 5. Identifier and label schemes
 
