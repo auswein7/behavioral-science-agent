@@ -40,3 +40,31 @@ class TestLikelyNamePrecision:
 
     def test_scrub_tokens_never_flagged(self):
         assert likely_names("thanks [NAME], see you at [PLACE] then") == []
+
+
+class TestFirstLineIsALineStart:
+    """A document opening with a Markdown heading got no line-start treatment,
+    because \\A did not allow the prefix that \\n did. The canonical title
+    tripped likely_name on line 1 and would not have on line 2."""
+
+    @staticmethod
+    def _names(text: str) -> list[str]:
+        return [term for category, term, _ in iter_findings(text) if category == "likely_name"]
+
+    def test_canonical_title_on_the_first_line_is_clean(self):
+        assert self._names("# Screenplay\n\n*A screenplay.*\n") == []
+
+    def test_same_heading_on_a_later_line_agrees(self):
+        first = self._names("# Screenplay\n")
+        later = self._names("intro text.\n\n# Screenplay\n")
+        assert first == later == []
+
+    def test_a_real_name_in_a_heading_is_still_caught(self):
+        # The whole reason to fix the boundary rather than skip headings.
+        assert "Sarah" in self._names("# Report by Sarah Connor\n")
+
+    def test_generated_title_still_flags_its_mid_title_capitals(self):
+        # Run 4's title. Only the first word gets line-start treatment; the
+        # rest are real mid-line capitals and the gate should say so.
+        names = self._names("# A Responsibility for Our Blue Planet\n")
+        assert names == ["Responsibility", "Our", "Blue", "Planet"]

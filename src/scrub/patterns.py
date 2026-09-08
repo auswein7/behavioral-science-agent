@@ -26,8 +26,12 @@ CAPITALIZED_WORD_RE = re.compile(r"\b[A-Z][a-zA-Z]*\b")
 # ordinary end punctuation optionally wrapped in closing emphasis or quotes. Run 3's
 # screenplay produced 88 likely_name findings that were almost all sentence-initial
 # words after "> " markers this regex previously did not treat as boundaries.
+# The document's first line gets the same Markdown-prefix treatment as every
+# later line: without the prefix class on \A, a file opening with "# Heading"
+# left the first word looking mid-sentence, so a canonical title tripped
+# likely_name while the identical heading on line 2 did not.
 SENTENCE_INITIAL_RE = re.compile(
-    r"(?:\A|[.!?]['\")*_\]]*\s+|\n[\s>#*_\-]*|>\s+|:\s+)['\"(*_\[]*([A-Z][a-zA-Z]*)"
+    r"(?:\A[\s>#*_\-]*|[.!?]['\")*_\]]*\s+|\n[\s>#*_\-]*|>\s+|:\s+)['\"(*_\[]*([A-Z][a-zA-Z]*)"
 )
 # "na" is the OSU prior-field convention in delivered tables; "i" is the English
 # first-person pronoun, capitalized at any position; the last four are the

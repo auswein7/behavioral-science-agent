@@ -191,6 +191,10 @@ SCREENPLAY_SYSTEM_PROMPT = (
     "in this timeline, their SPEAKER_NN tag. Leave the rest of the line's wording and meaning "
     "intact; this substitution should be as unobtrusive as possible.\n"
     "\n"
+    "The title line is fixed. Reproduce the template's '# Screenplay' heading "
+    "exactly and do not invent a title for the video; a title that describes "
+    "what happens is both unnecessary and a re-identification risk.\n"
+    "\n"
     "Output only the finished Markdown screenplay — no commentary before or after it."
 )
 

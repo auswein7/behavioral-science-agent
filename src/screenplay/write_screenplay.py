@@ -15,6 +15,17 @@ logger = logging.getLogger(__name__)
 DEFAULT_MODEL = "ornith-1.5-255k"
 DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parents[2] / "data" / "screenplays"
 
+# The screenplay's H1 line is fixed, not written by the model. A generated
+# title is content the artifact does not need, it defeats the likely_name
+# gate check by putting title-case words on a heading line, and for a real
+# session a descriptive title summarizes what happened, which the leak
+# taxonomy counts as a re-identification channel. The artifact's identity
+# lives in its filename and its provenance record, not in its heading; no
+# identifier is interpolated here because the obvious candidate, the video
+# filename stem, can itself carry a name.
+SCREENPLAY_TITLE = "Screenplay"
+TITLE_LINE = f"# {SCREENPLAY_TITLE}"
+
 SYSTEM_PROMPT = SCREENPLAY_SYSTEM_PROMPT
 
 ORNITH_UNAVAILABLE_HINT = (
@@ -102,8 +113,32 @@ def write_screenplay(
         raise AdapterError(
             f"{response.model} returned an empty screenplay {detail}; {remedy}"
         )
+    screenplay_md = enforce_title(screenplay_md)
     logger.info("Generated screenplay (%d chars) with model %s", len(screenplay_md), model_name)
     return screenplay_md
+
+
+def enforce_title(screenplay_md: str) -> str:
+    """Replace the generated H1 line with the fixed title, or insert it when
+    the model wrote no heading at all.
+
+    The prompt and the template both ask for this title, but a gate must not
+    depend on a model complying (principle 6): prompt compliance is
+    probabilistic and this rewrite is not. Only the first H1 is touched, so
+    scene headings are left alone.
+    """
+    lines = screenplay_md.split("\n")
+    for index, line in enumerate(lines):
+        if not line.strip():
+            continue
+        if line.startswith("# "):
+            if line != TITLE_LINE:
+                logger.info("Replaced generated title %r with %r", line, TITLE_LINE)
+                lines[index] = TITLE_LINE
+            return "\n".join(lines)
+        break
+    logger.info("Model wrote no title heading; inserting %r", TITLE_LINE)
+    return f"{TITLE_LINE}\n\n{screenplay_md}"
 
 
 def write_md(screenplay_md: str, name: str, output_dir: Path = DEFAULT_OUTPUT_DIR) -> Path:

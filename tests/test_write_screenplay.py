@@ -75,3 +75,52 @@ class TestWriteScreenplayEmptyContent:
     def test_real_content_returned_stripped(self, with_model_output):
         with_model_output("# Screenplay\n")
         assert ws.write_screenplay([{"type": "speech"}], template="# T") == "# Screenplay"
+
+
+class TestEnforceTitle:
+    """The H1 line is fixed in code, not left to the model. Run 4's gate was
+    blocked by four likely_name findings that were all mid-title capitals in
+    a generated title ("# A Responsibility for Our Blue Planet"), with no real
+    leak anywhere in the artifact."""
+
+    def test_generated_title_is_replaced(self):
+        md = "# A Responsibility for Our Blue Planet\n\n*A screenplay.*\n\n## SCENE 1"
+        out = ws.enforce_title(md)
+        assert out.startswith("# Screenplay\n")
+        assert "Responsibility" not in out
+
+    def test_canonical_title_is_left_alone(self):
+        md = "# Screenplay\n\n## SCENE 1"
+        assert ws.enforce_title(md) == md
+
+    def test_scene_headings_are_untouched(self):
+        # Only the first H1 is normalized; "## SCENE" lines are not H1 and a
+        # later "# " line belongs to the body, not the title.
+        md = "# Invented Title\n\n## SCENE 1 - [00:00:00.000 - 00:00:12.000]\n\n## SCENE 2"
+        out = ws.enforce_title(md)
+        assert "## SCENE 1 - [00:00:00.000 - 00:00:12.000]" in out
+        assert "## SCENE 2" in out
+
+    def test_missing_title_is_inserted(self):
+        md = "## SCENE 1\n\n**SPEAKER_00** *(00:00:03.500)*"
+        out = ws.enforce_title(md)
+        assert out.startswith("# Screenplay\n\n")
+        assert "## SCENE 1" in out
+
+    def test_leading_blank_lines_do_not_hide_the_title(self):
+        md = "\n\n# Some Invented Name\n\n## SCENE 1"
+        out = ws.enforce_title(md)
+        assert "# Screenplay" in out
+        assert "Invented" not in out
+
+    def test_enforced_title_clears_the_likely_name_gate(self):
+        # The end-to-end point of the fix: the exact run-4 title produced four
+        # likely_name findings; after enforcement the artifact produces none.
+        from src.scrub.patterns import iter_findings
+
+        before = "# A Responsibility for Our Blue Planet\n\n*A screenplay.*\n"
+        after = ws.enforce_title(before)
+        names_before = [t for category, t, _ in iter_findings(before) if category == "likely_name"]
+        names_after = [t for category, t, _ in iter_findings(after) if category == "likely_name"]
+        assert names_before, "expected the generated title to trip likely_name"
+        assert names_after == []
