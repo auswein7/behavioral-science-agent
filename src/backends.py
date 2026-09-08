@@ -212,16 +212,27 @@ def fairlib_coder_adapter(
     temperature: float = 0.0,
     seed: int | None = None,
     num_ctx: int | None = None,
+    max_tokens: int | None = None,
 ) -> object:
     """The fairlib adapter the coder agent runs on: a text-only OllamaAdapter
     with deterministic sampling (principle 8: temperature 0 or a fixed seed
     unless a run opts out). The coder is a fairlib SimpleAgent, so unlike the
-    two stages above it takes the fairlib adapter itself, not the seam."""
+    two stages above it takes the fairlib adapter itself, not the seam.
+
+    Every option is set at construction because SimpleAgent.arun forwards no
+    generation kwargs to the model; there is no per-call path from the coder.
+    max_tokens is the neutral output budget and becomes Ollama's num_predict
+    here. Verified 2026-09-08 against fairlib b3a4fc83: GeminiAdapter takes no
+    options at construction and arun forwards none per call, so this budget
+    cannot yet be expressed on a Gemini-backed coder at all - that is an
+    upstream gap, not something to fake with a second code path here."""
     options: dict[str, object] = {"temperature": temperature}
     if seed is not None:
         options["seed"] = seed
     if num_ctx is not None:
         options["num_ctx"] = num_ctx
+    if max_tokens is not None:
+        options["num_predict"] = max_tokens
     return _fairlib_ollama_adapter_cls()(model_name=model_name, vision=False, options=options)
 
 
@@ -232,6 +243,7 @@ def build_coder_llm(
     temperature: float = 0.0,
     seed: int | None = None,
     num_ctx: int | None = None,
+    max_tokens: int | None = None,
 ) -> object:
     """Construct the coder stage's fairlib chat model for the configured
     provider. Usage accounting is not bound here: the coder's SimpleAgent
@@ -244,7 +256,11 @@ def build_coder_llm(
     (adoption map item e, ADR first). The refusal is typed, not a fallback."""
     if provider == "ollama":
         return fairlib_coder_adapter(
-            model_name, temperature=temperature, seed=seed, num_ctx=num_ctx
+            model_name,
+            temperature=temperature,
+            seed=seed,
+            num_ctx=num_ctx,
+            max_tokens=max_tokens,
         )
     if provider in {"anthropic", "openai", "gemini"}:
         raise ConfigurationError(

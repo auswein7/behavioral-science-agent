@@ -81,6 +81,7 @@ def main(argv: list[str] | None = None) -> int:
         temperature=config.temperature,
         seed=config.seed,
         num_ctx=config.num_ctx,
+        max_tokens=config.max_tokens,
     )
     coder = FairlibAgentCoder(
         llm,

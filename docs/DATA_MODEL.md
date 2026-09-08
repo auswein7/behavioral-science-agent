@@ -282,6 +282,22 @@ version, model, timing and `StageUsage` (4.3) for the stage, plus a
 | planner_prompt_digest | str | blake2b-128 of the planner system prompt as rendered for this run |
 | planner_prompt_chars | str | length of that prompt |
 
+`CoderConfig` carries two budget levers and they are not the same kind of
+thing. `max_tokens` (`CODER_MAX_TOKENS`) is the OUTPUT budget and is
+provider-neutral: fairlib aliases that name onto each adapter's own request
+field, and this repo maps it to Ollama's `num_predict`. `num_ctx`
+(`CODER_NUM_CTX`) is CONTEXT SIZE, which has no provider-neutral counterpart -
+on Ollama it is a construction-time adapter option, on Gemini it is fixed by
+the model - so it stays adapter-scoped rather than pretending to be portable.
+
+Both are set at adapter construction, because `SimpleAgent.arun` forwards no
+generation kwargs to the model. Verified 2026-09-08 against fairlib b3a4fc83:
+`GeminiAdapter` takes no options at construction either, so a Gemini-backed
+coder cannot express an output budget at all until fairlib grows one of those
+surfaces. That gap is why an empty `MAX_TOKENS` reply is currently reported as
+a coding failure rather than a budget one (TODO item b2): the remedy is "retry
+with a larger budget" and, on that backend, there is no budget to raise.
+
 The digest is there because the coder's system prompt is assembled by
 fairlib's planner, not by this repo, so `coder_prompt_version` alone does not
 describe what the model saw. Two fairlib trees that both reported version

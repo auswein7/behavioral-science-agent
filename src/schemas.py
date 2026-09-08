@@ -106,7 +106,12 @@ class CoderConfig(_Deliverable):
     context_utterances: int = Field(default=5, ge=0)
     max_retries: int = Field(default=2, ge=0)
     max_steps: int = Field(default=3, ge=1)
+    # num_ctx is Ollama's construction-time context option and has no
+    # provider-neutral counterpart (Gemini's window is fixed by the model),
+    # so it stays adapter-scoped. max_tokens is the output budget and IS
+    # neutral - it is the lever a truncated reply needs raised on retry.
     num_ctx: int | None = None
+    max_tokens: int | None = Field(default=None, gt=0)
     temperature: float = 0.0
     seed: int | None = None
 

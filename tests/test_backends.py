@@ -4,6 +4,7 @@ import dataclasses
 
 import pytest
 
+from src import backends
 from src.adapters import OllamaChatModel, UsageRecordingModel, UsageTally
 from src.backends import build_caption_model, build_screenplay_model
 from src.errors import ConfigurationError
@@ -120,3 +121,44 @@ class TestBuildScreenplayModel:
     def test_unknown_backend_is_typed_error(self):
         with pytest.raises(ConfigurationError, match="langchain"):
             build_screenplay_model("langchain", "ornith-1.5-255k")
+
+
+class TestCoderOutputBudget:
+    """max_tokens is the neutral output budget; on Ollama it is num_predict.
+    Everything is set at construction because SimpleAgent.arun forwards no
+    generation kwargs, so a lever that is not in the constructor is a lever
+    the coder does not have."""
+
+    @staticmethod
+    def _options(monkeypatch, **kwargs):
+        captured = {}
+
+        class FakeAdapter:
+            def __init__(self, **adapter_kwargs):
+                captured.update(adapter_kwargs)
+
+        monkeypatch.setattr(backends, "_fairlib_ollama_adapter_cls", lambda: FakeAdapter)
+        backends.fairlib_coder_adapter("qwen2.5:14b", **kwargs)
+        return captured["options"]
+
+    def test_max_tokens_becomes_num_predict(self, monkeypatch):
+        assert self._options(monkeypatch, max_tokens=512)["num_predict"] == 512
+
+    def test_omitted_when_unset(self, monkeypatch):
+        assert "num_predict" not in self._options(monkeypatch)
+
+    def test_context_and_output_budgets_are_distinct(self, monkeypatch):
+        options = self._options(monkeypatch, num_ctx=8192, max_tokens=512)
+        assert options["num_ctx"] == 8192
+        assert options["num_predict"] == 512
+
+    def test_build_coder_llm_passes_the_budget_through(self, monkeypatch):
+        captured = {}
+
+        class FakeAdapter:
+            def __init__(self, **adapter_kwargs):
+                captured.update(adapter_kwargs)
+
+        monkeypatch.setattr(backends, "_fairlib_ollama_adapter_cls", lambda: FakeAdapter)
+        backends.build_coder_llm("ollama", "qwen2.5:14b", max_tokens=256)
+        assert captured["options"]["num_predict"] == 256

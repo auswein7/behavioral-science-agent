@@ -173,6 +173,7 @@ def load_coder_config(env: Mapping[str, str] | None = None) -> CoderConfig:
             max_retries=int(env.get("CODER_MAX_RETRIES", "2")),
             max_steps=int(env.get("CODER_MAX_STEPS", "3")),
             num_ctx=_optional_int(env.get("CODER_NUM_CTX")),
+            max_tokens=_optional_int(env.get("CODER_MAX_TOKENS")),
             temperature=float(env.get("SAMPLING_TEMPERATURE", "0.0")),
             seed=_optional_int(env.get("SAMPLING_SEED")),
         )
