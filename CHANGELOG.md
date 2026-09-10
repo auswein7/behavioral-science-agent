@@ -21,8 +21,9 @@ Forked 2026-08-30 from `Andrew-D-Gibson/Screenplay_Video_Anonymizer` (d4af4db).
   lever, observed from `ModelInvocationEvent` usage, instead of surfacing as
   a validator or step-limit failure (TODO item b2). The coder's event bus now
   exists unconditionally.
-- `requirements-fairlib.txt`: fair-llm pinned to fair_llm main e434a5e8
-  (0.6.2 on PyPI lacks #186); CI installs from it instead of tracking main.
+- `requirements-fairlib.txt`: fair-llm pinned to the v0.6.3 release commit
+  (69e2025f; 0.6.2 on PyPI lacks #186, #187 and #191); CI installs from it
+  instead of tracking main. Moves to `fair-llm==0.6.3` once 0.6.3 is on PyPI.
 - Per-stage usage accounting from fairlib's own `ModelInvocationEvent`
   (fair_llm #170, PR #175): `FairlibUsageSubscriber` binds a bus per stage
   adapter and feeds the `UsageTally` that `RunProvenance.stage_usage`
