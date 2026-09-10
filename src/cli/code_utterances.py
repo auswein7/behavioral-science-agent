@@ -27,6 +27,7 @@ from src.adapters import UsageTally
 from src.backends import build_coder_llm
 from src.coder import (
     FairlibAgentCoder,
+    coder_generation_options,
     iter_coded_rows,
     placeholder_codebook,
     write_coded_csv,
@@ -75,20 +76,18 @@ def main(argv: list[str] | None = None) -> int:
         logger.info("resuming: %d rows already coded in %s", len(coded), coded_path)
 
     tally = UsageTally()
-    llm = build_coder_llm(
-        config.provider,
-        config.coder_model,
-        temperature=config.temperature,
-        seed=config.seed,
-        num_ctx=config.num_ctx,
-        max_tokens=config.max_tokens,
-    )
+    llm = build_coder_llm(config.provider, config.coder_model, num_ctx=config.num_ctx)
     coder = FairlibAgentCoder(
         llm,
         codebook,
         max_retries=config.max_retries,
         max_steps=config.max_steps,
         usage_tally=tally,
+        generation_options=coder_generation_options(
+            temperature=config.temperature,
+            seed=config.seed,
+            max_tokens=config.max_tokens,
+        ),
     )
     started = datetime.now(UTC)
     clock = time.monotonic()

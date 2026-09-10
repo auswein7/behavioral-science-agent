@@ -206,67 +206,41 @@ def build_screenplay_model(
     )
 
 
-def fairlib_coder_adapter(
-    model_name: str,
-    *,
-    temperature: float = 0.0,
-    seed: int | None = None,
-    num_ctx: int | None = None,
-    max_tokens: int | None = None,
-) -> object:
-    """The fairlib adapter the coder agent runs on: a text-only OllamaAdapter
-    with deterministic sampling (principle 8: temperature 0 or a fixed seed
-    unless a run opts out). The coder is a fairlib SimpleAgent, so unlike the
-    two stages above it takes the fairlib adapter itself, not the seam.
+def fairlib_coder_adapter(model_name: str, *, num_ctx: int | None = None) -> object:
+    """The fairlib adapter the coder agent runs on: a text-only OllamaAdapter.
+    The coder is a fairlib SimpleAgent, so unlike the two stages above it
+    takes the fairlib adapter itself, not the seam.
 
-    Every option is set at construction because SimpleAgent.arun forwards no
-    generation kwargs to the model; there is no per-call path from the coder.
-    max_tokens is the neutral output budget and becomes Ollama's num_predict
-    here. Verified 2026-09-08 against fairlib b3a4fc83: GeminiAdapter takes no
-    options at construction and arun forwards none per call, so this budget
-    cannot yet be expressed on a Gemini-backed coder at all - that is an
-    upstream gap, not something to fake with a second code path here."""
-    options: dict[str, object] = {"temperature": temperature}
-    if seed is not None:
-        options["seed"] = seed
+    Only the context size is set here. Sampling and the output budget are
+    run options: the coder sends them with every call through
+    SimpleAgent.arun(generation_options=) in fairlib's neutral vocabulary
+    (fair_llm #186), where fairlib maps max_tokens onto Ollama's num_predict.
+    num_ctx has no neutral counterpart (a hosted model's window is fixed), so
+    it stays an adapter option of this backend."""
+    options: dict[str, object] = {}
     if num_ctx is not None:
         options["num_ctx"] = num_ctx
-    if max_tokens is not None:
-        options["num_predict"] = max_tokens
     return _fairlib_ollama_adapter_cls()(model_name=model_name, vision=False, options=options)
 
 
-def build_coder_llm(
-    provider: str,
-    model_name: str,
-    *,
-    temperature: float = 0.0,
-    seed: int | None = None,
-    num_ctx: int | None = None,
-    max_tokens: int | None = None,
-) -> object:
+def build_coder_llm(provider: str, model_name: str, *, num_ctx: int | None = None) -> object:
     """Construct the coder stage's fairlib chat model for the configured
     provider. Usage accounting is not bound here: the coder's SimpleAgent
     owns the event bus and binds the model to it, so the tally attaches
-    there (FairlibAgentCoder usage_tally).
+    there (FairlibAgentCoder usage_tally). Sampling and the output budget are
+    the coder's run options, not construction arguments.
 
-    Only "ollama" is constructible: a remote provider (Anthropic, Gemini via
-    fair_llm #148) is a network egress and stays refused with the gate named
-    until the PII/egress boundary is bound on fairlib's security primitives
-    (adoption map item e, ADR first). The refusal is typed, not a fallback."""
+    Only "ollama" is constructible: a remote provider is a network egress and
+    stays refused until the PII/egress boundary is bound (ADR 0001, adoption
+    map item e). fairlib ships the Gemini adapter as of fair_llm #186, so
+    the gate is now the only block. The refusal is typed, not a fallback."""
     if provider == "ollama":
-        return fairlib_coder_adapter(
-            model_name,
-            temperature=temperature,
-            seed=seed,
-            num_ctx=num_ctx,
-            max_tokens=max_tokens,
-        )
+        return fairlib_coder_adapter(model_name, num_ctx=num_ctx)
     if provider in {"anthropic", "openai", "gemini"}:
         raise ConfigurationError(
             f"CODER_PROVIDER={provider} is a network egress and is not yet "
-            "behind the PII/egress gate (adoption map item e; Gemini also waits "
-            "on fair_llm #148). Use CODER_PROVIDER=ollama."
+            "behind the PII/egress gate (ADR 0001, adoption map item e). "
+            "Use CODER_PROVIDER=ollama."
         )
     raise ConfigurationError(
         f"unknown coder provider '{provider}'; expected 'ollama'"

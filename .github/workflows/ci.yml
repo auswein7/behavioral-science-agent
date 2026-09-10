@@ -32,13 +32,18 @@ jobs:
           pip install ruff
           python -m spacy download en_core_web_sm
 
-      # fairlib conformance guard (tests/test_fairlib_conformance.py): runs
-      # the upstream chat-model suite over the adapters this repo constructs,
-      # so a fair_llm main change that breaks the contract fails here first.
-      # Without the token the install is skipped and the guard self-skips.
-      - name: Install fair-llm (conformance guard)
+      # fair-llm at the commit pinned in requirements-fairlib.txt, the one the
+      # fork was verified against; it drives the coder tests and the
+      # conformance guard (tests/test_fairlib_conformance.py). Tracking main
+      # here would let CI go green on a tree nobody verified; a new main head
+      # is verified in tandem before the pin moves. The token rewrite gives
+      # pip read access to the private repo. Without the token the install is
+      # skipped and the fairlib tests self-skip.
+      - name: Install fair-llm (pinned)
         if: env.FAIR_LLM_TOKEN != ''
-        run: pip install "fair-llm @ git+https://${FAIR_LLM_TOKEN}@github.com/USAFA-AI-Center/fair_llm.git@main"
+        run: |
+          git config --global url."https://x-access-token:${FAIR_LLM_TOKEN}@github.com/USAFA-AI-Center/".insteadOf "https://github.com/USAFA-AI-Center/"
+          pip install -r requirements-fairlib.txt
 
       # Explicit flags rather than a config file, pinned to match local runs.
       - name: Lint

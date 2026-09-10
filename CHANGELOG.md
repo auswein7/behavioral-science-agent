@@ -9,6 +9,20 @@ prototype history in the upstream repo.
 Forked 2026-08-30 from `Andrew-D-Gibson/Screenplay_Video_Anonymizer` (d4af4db).
 
 ### Added
+- Coder run options on fairlib's neutral channel (fair_llm #186):
+  temperature, seed and `max_tokens` travel with every model call, planner
+  turns and validator rewrites alike, through
+  `SimpleAgent.arun(generation_options=)`; `build_coder_llm` and
+  `fairlib_coder_adapter` now take only `num_ctx`, the one option with no
+  neutral counterpart. The coder refuses an option its model does not
+  declare with a `ConfigurationError` at construction, before the first row.
+- `CoderBudgetError` (a `CoderError`): a coding that fails after a model call
+  stopped on the output budget reports the budget and the `CODER_MAX_TOKENS`
+  lever, observed from `ModelInvocationEvent` usage, instead of surfacing as
+  a validator or step-limit failure (TODO item b2). The coder's event bus now
+  exists unconditionally.
+- `requirements-fairlib.txt`: fair-llm pinned to fair_llm main e434a5e8
+  (0.6.2 on PyPI lacks #186); CI installs from it instead of tracking main.
 - Per-stage usage accounting from fairlib's own `ModelInvocationEvent`
   (fair_llm #170, PR #175): `FairlibUsageSubscriber` binds a bus per stage
   adapter and feeds the `UsageTally` that `RunProvenance.stage_usage`

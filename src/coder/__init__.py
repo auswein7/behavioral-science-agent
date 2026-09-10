@@ -9,6 +9,7 @@ backend factory; nothing here knows which provider answers.
 from src.coder.agent import (
     AbstractUtteranceCoder,
     FairlibAgentCoder,
+    coder_generation_options,
     coding_validator,
     iter_coded_rows,
     render_coder_role,
@@ -21,6 +22,7 @@ __all__ = [
     "CodeDefinition",
     "Codebook",
     "FairlibAgentCoder",
+    "coder_generation_options",
     "coding_validator",
     "iter_coded_rows",
     "placeholder_codebook",

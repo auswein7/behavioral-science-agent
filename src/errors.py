@@ -39,3 +39,14 @@ class CoderError(PipelineError):
         self.uid = uid
         self.attempts = attempts
         self.last_feedback = last_feedback
+
+
+class CoderBudgetError(CoderError):
+    """A coding failed after a model call behind it stopped on the output
+    budget (done_reason LENGTH). A subclass so a caller tells a budget
+    failure from a prompt or codebook one by isinstance. max_tokens is the
+    budget in force, None when the backend default applied."""
+
+    def __init__(self, message: str, *, uid: str, attempts: int, max_tokens: int | None) -> None:
+        super().__init__(message, uid=uid, attempts=attempts)
+        self.max_tokens = max_tokens

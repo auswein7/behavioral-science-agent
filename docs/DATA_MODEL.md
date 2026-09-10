@@ -271,7 +271,11 @@ enforces that the model's judgments carry exactly the codebook's codes.
 The model's per-utterance reply is `UtteranceCoding` (`uid`, `judgments:
 {code: {value, rationale}}`), validated by fairlib's `SimpleAgent.arun`
 validator with the framework's own retries; exhaustion is a typed
-`CoderError` carrying the uid. A companion `<session_id>.coder_provenance.json`
+`CoderError` carrying the uid. When any model call behind the failure stopped
+on the output budget (`done_reason` LENGTH, read off fairlib's
+`ModelInvocationEvent`) it is the subclass `CoderBudgetError`, carrying the
+`max_tokens` in force, so a truncation is never reported as a prompt or
+codebook failure. A companion `<session_id>.coder_provenance.json`
 records the resolved `CoderConfig`, codebook version and digest, prompt
 version, model, timing and `StageUsage` (4.3) for the stage, plus a
 `framework` block:
@@ -285,18 +289,22 @@ version, model, timing and `StageUsage` (4.3) for the stage, plus a
 `CoderConfig` carries two budget levers and they are not the same kind of
 thing. `max_tokens` (`CODER_MAX_TOKENS`) is the OUTPUT budget and is
 provider-neutral: fairlib aliases that name onto each adapter's own request
-field, and this repo maps it to Ollama's `num_predict`. `num_ctx`
-(`CODER_NUM_CTX`) is CONTEXT SIZE, which has no provider-neutral counterpart -
-on Ollama it is a construction-time adapter option, on Gemini it is fixed by
-the model - so it stays adapter-scoped rather than pretending to be portable.
+field (Ollama's `num_predict`, for example). `num_ctx` (`CODER_NUM_CTX`) is
+CONTEXT SIZE, which has no provider-neutral counterpart - on Ollama it is a
+construction-time adapter option, on Gemini it is fixed by the model - so it
+stays adapter-scoped rather than pretending to be portable.
 
-Both are set at adapter construction, because `SimpleAgent.arun` forwards no
-generation kwargs to the model. Verified 2026-09-08 against fairlib b3a4fc83:
-`GeminiAdapter` takes no options at construction either, so a Gemini-backed
-coder cannot express an output budget at all until fairlib grows one of those
-surfaces. That gap is why an empty `MAX_TOKENS` reply is currently reported as
-a coding failure rather than a budget one (TODO item b2): the remedy is "retry
-with a larger budget" and, on that backend, there is no budget to raise.
+Since fair_llm #186 the output budget, temperature and seed are run options:
+the coder sends them with every model call, planner turns and validator
+rewrites alike, through `SimpleAgent.arun(generation_options=)`, and only
+`num_ctx` is set at adapter construction. Each adapter declares the neutral
+options it carries, and the coder refuses an undeclared one with a
+`ConfigurationError` before the first row. Seed is not portable - Ollama and
+Gemini declare it, Anthropic and HuggingFace do not - so a `CoderConfig` with
+`SAMPLING_SEED` set is refused on those backends rather than run with the
+seed silently dropped. A declared seed is still not a promise of reproducible
+output: gemini-3.5-flash measured non-reproducible at temperature 0 with a
+fixed seed (2026-09-08).
 
 The digest is there because the coder's system prompt is assembled by
 fairlib's planner, not by this repo, so `coder_prompt_version` alone does not

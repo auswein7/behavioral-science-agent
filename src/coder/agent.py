@@ -11,23 +11,27 @@ feedback. When fair_llm #174 ships response_model on arun, this validator
 becomes the framework's; until then it is the documented fallback path.
 
 The model is a fairlib chat adapter handed in by src.backends; this module
-never learns the provider. Input rows are Tier C (already de-identified),
-so the stage sends nothing new off-box that the gate has not passed, and
-the row text is treated as untrusted data inside the prompt.
+never learns the provider. Sampling and the output budget travel with every
+call of a run through SimpleAgent.arun(generation_options=) in fairlib's
+provider-neutral vocabulary (fair_llm #186), so one CoderConfig reaches any
+backend the same way. Input rows are Tier C (already de-identified), so the
+stage sends nothing new off-box that the gate has not passed, and the row
+text is treated as untrusted data inside the prompt.
 """
 
 import asyncio
 import hashlib
+import inspect
 import json
 import logging
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 
 from pydantic import ValidationError
 
 from src.adapters import UsageTally
 from src.coder.codebook import Codebook
-from src.errors import AdapterError, CoderError, ConfigurationError
+from src.errors import AdapterError, CoderBudgetError, CoderError, ConfigurationError
 from src.fairlib_adapter import FairlibUsageSubscriber
 from src.prompts import CODER_ROLE_PROMPT
 from src.schemas import CodedUtteranceRow, UtteranceCoding, UtteranceRow
@@ -118,6 +122,76 @@ def format_request(row: UtteranceRow, prior: Sequence[UtteranceRow]) -> str:
     )
 
 
+def coder_generation_options(
+    *, temperature: float, seed: int | None, max_tokens: int | None
+) -> dict[str, object]:
+    """The coder's sampling and output budget in fairlib's provider-neutral
+    vocabulary. An unset lever is left out, so the backend's own default
+    applies rather than an explicit None."""
+    options: dict[str, object] = {"temperature": temperature}
+    if seed is not None:
+        options["seed"] = seed
+    if max_tokens is not None:
+        options["max_tokens"] = max_tokens
+    return options
+
+
+def _require_carried_options(llm: object, options: Mapping[str, object]) -> None:
+    """Refuse, before the first row, a run option the bound model does not
+    carry. fairlib refuses the same name at call time; checking here turns a
+    failure on row one into a wiring error at startup that names the lever.
+    A model that declares nothing is left alone, the rule fairlib applies.
+
+    Seed is the case that bites: some backends declare it and some do not,
+    so determinism is a property of the backend. Refusing is the current
+    rule - a silently dropped seed would let the run record claim a
+    determinism the backend never offered."""
+    if not options:
+        return
+    from fairlib import SimpleAgent
+
+    if "generation_options" not in inspect.signature(SimpleAgent.arun).parameters:
+        raise ConfigurationError(
+            "the installed fair-llm predates SimpleAgent.arun(generation_options=) "
+            "(fair_llm #186); install the version pinned in requirements-fairlib.txt"
+        )
+    declared = llm.get_model_capabilities().get("generation_options")  # type: ignore[attr-defined]
+    if declared is None:
+        return
+    undeclared = sorted(set(options) - set(declared))
+    if undeclared:
+        raise ConfigurationError(
+            f"the coder model does not carry generation option(s) {undeclared} "
+            f"(it declares {sorted(declared)}); unset the matching lever "
+            "(SAMPLING_SEED, SAMPLING_TEMPERATURE, CODER_MAX_TOKENS) or bind a "
+            "backend that carries it"
+        )
+
+
+class _TruncationWatch:
+    """Records whether any model call behind the current coding stopped on
+    the output budget. It reads the typed done_reason off fairlib's
+    ModelInvocationEvent, so truncation is observed on the bus, never
+    inferred from reply text (design principle 4). Planner turns and
+    validator rewrites both emit the event, so both are covered."""
+
+    def __init__(self) -> None:
+        self.truncated = False
+        self._length = None
+
+    def subscribe(self, bus: object) -> None:
+        from fairlib.core.events import ModelInvocationEvent
+        from fairlib.core.message import DoneReason
+
+        self._length = DoneReason.LENGTH
+        bus.subscribe(ModelInvocationEvent, self._on_invocation)  # type: ignore[attr-defined]
+
+    def _on_invocation(self, event: object) -> None:
+        usage = event.usage  # type: ignore[attr-defined]
+        if usage is not None and usage.done_reason is self._length:
+            self.truncated = True
+
+
 class AbstractUtteranceCoder(ABC):
     """The coder stage's contract: one validated coding per utterance."""
 
@@ -134,9 +208,12 @@ class AbstractUtteranceCoder(ABC):
 class FairlibAgentCoder(AbstractUtteranceCoder):
     """AbstractUtteranceCoder over a fairlib SimpleAgent.
 
-    llm is any fairlib AbstractChatModel; the fork's factory builds it with
-    its event bus already bound for usage accounting. One fresh agent per
-    utterance keeps codings independent (no memory carries across rows)."""
+    llm is any fairlib AbstractChatModel. generation_options is the run's
+    sampling and output budget (coder_generation_options), sent with every
+    model call; a name the model does not declare is refused here. One
+    fresh agent per utterance keeps codings independent (no memory carries
+    across rows), and codings run one at a time because the truncation
+    watch is reset per coding."""
 
     def __init__(
         self,
@@ -146,21 +223,26 @@ class FairlibAgentCoder(AbstractUtteranceCoder):
         max_retries: int = 2,
         max_steps: int = 3,
         usage_tally: UsageTally | None = None,
+        generation_options: Mapping[str, object] | None = None,
     ) -> None:
+        from fairlib.core.event_bus import AgentEventBus
+
         self._llm = llm
         self._codebook = codebook
         self._max_retries = max_retries
         self._max_steps = max_steps
         self._role = render_coder_role(codebook)
+        self._options = dict(generation_options or {})
+        _require_carried_options(llm, self._options)
         # SimpleAgent binds its model to the agent's bus at construction, so
-        # the stage's accounting subscribes to a bus this coder owns and
-        # hands to every agent; a bus bound to the adapter beforehand would
-        # be displaced and count nothing (found live, 2026-09-02).
-        self._events = None
+        # the stage's subscribers attach to a bus this coder owns and hands
+        # to every agent; a bus bound to the adapter beforehand would be
+        # displaced and see nothing (found live, 2026-09-02). The bus exists
+        # even without a tally because the truncation watch needs it.
+        self._events = AgentEventBus()
+        self._watch = _TruncationWatch()
+        self._watch.subscribe(self._events)
         if usage_tally is not None:
-            from fairlib.core.event_bus import AgentEventBus
-
-            self._events = AgentEventBus()
             FairlibUsageSubscriber(usage_tally).subscribe(self._events)
 
     @property
@@ -221,18 +303,48 @@ class FairlibAgentCoder(AbstractUtteranceCoder):
             events=self._events,
         )
 
+    def _raise_if_truncated(self, uid: str, attempts: int, cause: Exception) -> None:
+        """When a call behind this failure stopped on the output budget,
+        report the budget. The validator's or the step limit's message would
+        point at the prompt or the codebook and send the operator to debug
+        the wrong thing (design principle 6: a degraded result is reported
+        as its own kind)."""
+        if not self._watch.truncated:
+            return
+        budget = self._options.get("max_tokens")
+        max_tokens = budget if isinstance(budget, int) else None
+        raise CoderBudgetError(
+            f"coder output for {uid} was cut off by the output budget "
+            f"(max_tokens={max_tokens if max_tokens is not None else 'backend default'}) "
+            "and the coding failed after it; the cause is the budget, not the "
+            "prompt or codebook. Raise CODER_MAX_TOKENS (and CODER_NUM_CTX on a "
+            "backend whose context window also bounds the reply).",
+            uid=uid,
+            attempts=attempts,
+            max_tokens=max_tokens,
+        ) from cause
+
     async def acode_utterance(
         self, row: UtteranceRow, prior: Sequence[UtteranceRow]
     ) -> UtteranceCoding:
-        from fairlib import FairlibError, MaxStepsExceeded, ValidatorRejectedError
+        from fairlib import (
+            FairlibError,
+            MaxStepsExceeded,
+            PlannerParseError,
+            ValidatorRejectedError,
+        )
 
+        self._watch.truncated = False
+        run_options = {"generation_options": self._options} if self._options else {}
         try:
             answer = await self._agent().arun(
                 format_request(row, prior),
                 validator=coding_validator(self._codebook, row.uid),
                 max_retries=self._max_retries,
+                **run_options,
             )
         except ValidatorRejectedError as exc:
+            self._raise_if_truncated(row.uid, exc.attempt_count, exc)
             raise CoderError(
                 f"no valid coding for {row.uid} after {exc.attempt_count} attempt(s)",
                 uid=row.uid,
@@ -240,13 +352,23 @@ class FairlibAgentCoder(AbstractUtteranceCoder):
                 last_feedback=exc.last_feedback,
             ) from exc
         except MaxStepsExceeded as exc:
+            self._raise_if_truncated(row.uid, exc.max_steps, exc)
             raise CoderError(
                 f"coder agent ran out of steps ({exc.max_steps}) on {row.uid}",
                 uid=row.uid,
                 attempts=exc.max_steps,
             ) from exc
+        except PlannerParseError as exc:
+            self._raise_if_truncated(row.uid, 1, exc)
+            raise AdapterError(f"coder model failed on {row.uid}: {exc}") from exc
         except FairlibError as exc:
             raise AdapterError(f"coder model failed on {row.uid}: {exc}") from exc
+        if self._watch.truncated:
+            logger.warning(
+                "%s: a model call was cut off by the output budget; a later "
+                "attempt produced a valid coding",
+                row.uid,
+            )
         # The validator approved this text, so the parse cannot fail here.
         return parse_coding(answer, self._codebook, row.uid)
 
