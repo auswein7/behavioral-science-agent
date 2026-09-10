@@ -5,6 +5,15 @@ python-dotenv
 ollama
 pydantic
 
+# fairlib (import name fairlib): the coder stage and the fairlib backends.
+# 0.6.3 is the first release with the Gemini adapter and
+# SimpleAgent.arun(generation_options=) (fair_llm #186), the planner prompt
+# fix (#187) and prompt-builder validation (#191).
+fair-llm==0.6.3
+
+# Reading OSU's coded-transcript workbooks (src/evaluation/osu_import.py).
+openpyxl
+
 # Deterministic spoken-name scrub (src/scrub/name_scrub.py). After installing,
 # fetch the fixed local NER model once: python -m spacy download en_core_web_sm
 spacy

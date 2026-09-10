@@ -17,10 +17,9 @@ Four models, orchestrated end-to-end by `main.py`. All four stages are implement
 
 ```
 pip install -r requirements.txt
-pip install -r requirements-fairlib.txt   # coder stage and fairlib backends; needs read access to fair_llm
 ```
 
-`requirements-fairlib.txt` pins fair-llm to a fair_llm commit rather than a PyPI release until a release carries the features the coder needs; the file says which.
+This includes `fair-llm` (import name `fairlib`) from PyPI, pinned to the release the coder stage was verified against.
 
 Requires a local [Ollama](https://ollama.com/download) install running in the background for the captioning and orchestrator stages — no GPU/PyTorch setup needed for those. WhisperX and emotion2vec+ still need the real PyTorch/`funasr` stack for diarization/ASR/tone classification.
 

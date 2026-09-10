@@ -32,19 +32,6 @@ jobs:
           pip install ruff
           python -m spacy download en_core_web_sm
 
-      # fair-llm at the commit pinned in requirements-fairlib.txt, the one the
-      # fork was verified against; it drives the coder tests and the
-      # conformance guard (tests/test_fairlib_conformance.py). Tracking main
-      # here would let CI go green on a tree nobody verified; a new main head
-      # is verified in tandem before the pin moves. The token rewrite gives
-      # pip read access to the private repo. Without the token the install is
-      # skipped and the fairlib tests self-skip.
-      - name: Install fair-llm (pinned)
-        if: env.FAIR_LLM_TOKEN != ''
-        run: |
-          git config --global url."https://x-access-token:${FAIR_LLM_TOKEN}@github.com/USAFA-AI-Center/".insteadOf "https://github.com/USAFA-AI-Center/"
-          pip install -r requirements-fairlib.txt
-
       # Explicit flags rather than a config file, pinned to match local runs.
       - name: Lint
         run: ruff check --isolated --select E4,E7,E9,F,I,UP,B,C4,RUF --target-version py311 src tests main.py
