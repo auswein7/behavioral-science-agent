@@ -29,10 +29,10 @@ from src.coder import (
     FairlibAgentCoder,
     coder_generation_options,
     iter_coded_rows,
-    placeholder_codebook,
     write_coded_csv,
     write_coded_json,
 )
+from src.coder.codebook import resolve_codebook
 from src.coder.deliverable import DEFAULT_OUTPUT_DIR, read_coded_json
 from src.config import load_coder_config, prompt_versions
 from src.errors import DeliverableError, PipelineError
@@ -61,7 +61,7 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     load_dotenv()
     config = load_coder_config()
-    codebook = placeholder_codebook()
+    codebook = resolve_codebook(config.codebook_path)
     if codebook.is_placeholder:
         logger.warning(
             "coding with the PLACEHOLDER codebook (%s): code names only, not "

@@ -9,6 +9,23 @@ prototype history in the upstream repo.
 Forked 2026-08-30 from `Andrew-D-Gibson/Screenplay_Video_Anonymizer` (d4af4db).
 
 ### Added
+- Evaluation harness (`src/evaluation`, `python -m src.cli.evaluate_coding`):
+  per-code precision, recall, F1, agreement and Cohen's kappa between a
+  candidate coding and a reference, never pooled accuracy; NA rows excluded
+  and one-sided NA counted; zero denominators reported as null. Reads
+  `.coded.json`, `.coded.csv` and OSU coded-transcript `.xlsx`. A declared
+  held-out split (`split_of`, rule recorded in every report) fixes tune and
+  test rows before any prompt tuning.
+- OSU transcript import (`python -m src.cli.import_osu_transcript`): an OSU
+  coded-transcript workbook becomes 4.1 utterance rows so the coder runs on
+  OSU's own sessions (their text-only condition). Demographic speaker labels
+  become `SPEAKER_NN`; the label map and generated manifest stay in the
+  git-ignored `data/imports/`. New source class `osu_study`, never cleared
+  for egress.
+- Codebook file lever `CODER_CODEBOOK`: OSU's definitions load from a JSON
+  document (`load_codebook`, template `docs/codebook.example.json`) into the
+  typed `Codebook`, which now refuses duplicate code names; unset keeps the
+  flagged placeholder. A bad file is a `ConfigurationError` at startup.
 - Coder run options on fairlib's neutral channel (fair_llm #186):
   temperature, seed and `max_tokens` travel with every model call, planner
   turns and validator rewrites alike, through

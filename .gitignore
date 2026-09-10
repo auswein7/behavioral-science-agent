@@ -15,6 +15,9 @@ data/deliverables/
 # .gitkeep placeholders stay tracked. Hand-written manifests (data/manifests/)
 # are Tier C metadata and ARE tracked.
 data/gate/
+# Imported external-study sessions: the speaker map holds the source's own
+# (demographic) labels, and the generated manifest is not hand-written.
+data/imports/
 data/transcripts/*
 !data/transcripts/.gitkeep
 data/captions/*

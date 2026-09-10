@@ -176,6 +176,7 @@ def load_coder_config(env: Mapping[str, str] | None = None) -> CoderConfig:
             max_tokens=_optional_int(env.get("CODER_MAX_TOKENS")),
             temperature=float(env.get("SAMPLING_TEMPERATURE", "0.0")),
             seed=_optional_int(env.get("SAMPLING_SEED")),
+            codebook_path=env.get("CODER_CODEBOOK") or None,
         )
     except (ValueError, ValidationError) as exc:
         raise ConfigurationError(f"invalid coder configuration: {exc}") from exc

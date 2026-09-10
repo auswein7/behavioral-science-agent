@@ -1,0 +1,35 @@
+{
+  "version": "placeholder-example-replace-with-osu-version",
+  "codes": [
+    {
+      "code": "AO",
+      "name": "Action Opportunity",
+      "definition": "The speaker invites another person to act or speak, or gives them the floor."
+    },
+    {
+      "code": "PO",
+      "name": "Performance Output",
+      "definition": "The speaker contributes a task-relevant idea, proposal or piece of work."
+    },
+    {
+      "code": "PE",
+      "name": "Positive Evaluation",
+      "definition": "The speaker positively evaluates another person's contribution."
+    },
+    {
+      "code": "NE",
+      "name": "Negative Evaluation",
+      "definition": "The speaker negatively evaluates another person's contribution."
+    },
+    {
+      "code": "I",
+      "name": "Influence",
+      "definition": "The speaker changes position or accepts another person's view."
+    },
+    {
+      "code": "Apology",
+      "name": "Apology",
+      "definition": "The speaker apologizes."
+    }
+  ]
+}

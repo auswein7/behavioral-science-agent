@@ -76,7 +76,7 @@ count and why confederates cannot currently be marked.
 |---|---|---|
 | schema_version | str | |
 | session_id | str | opaque id, e.g. `s017`; no dates or names |
-| source_class | str | `cadet_pii` or `public_domain`; drives gate behavior |
+| source_class | str | `cadet_pii`, `public_domain` or `osu_study` (a session imported from OSU's transcripts, human-subjects data); drives gate behavior, and only `public_domain` may ever leave the box (ADR 0001) |
 | task_name | str | e.g. `lost_on_the_moon` |
 | group_size | int | people on camera, including confederates |
 | expected_speaker_count | int | feeds diarization (`WHISPERX_NUM_SPEAKERS`) |
@@ -267,6 +267,11 @@ coded row and is the resumption point for an interrupted run. The code set
 is pluggable: it is the `Codebook` document (`src/coder/codebook.py`), not
 the schema, so it can change without a schema-version bump; the validator
 enforces that the model's judgments carry exactly the codebook's codes.
+The real codebook arrives as a JSON file named by `CODER_CODEBOOK`
+(`docs/codebook.example.json` is the template: `version` plus an ordered
+`codes` list of `code` / `name` / `definition`); a missing, malformed or
+duplicate-code document is a `ConfigurationError` before the first row. A
+`version` starting `placeholder-` marks the run as a placeholder run.
 
 The model's per-utterance reply is `UtteranceCoding` (`uid`, `judgments:
 {code: {value, rationale}}`), validated by fairlib's `SimpleAgent.arun`
@@ -313,6 +318,33 @@ describe what the model saw. Two fairlib trees that both reported version
 utterances (2026-09-08); the version field did not distinguish them and the
 digest did. Any coder result compared across framework versions is only
 reproducible with this block present.
+
+### 4.6 EvaluationReport (`<session>.eval_<reference_id>_<split>.json`)
+
+Produced by `python -m src.cli.evaluate_coding` from a candidate coding and
+a reference coding of the same session (`src/evaluation`). Counts only - no
+utterance text - so it travels wherever the codes may.
+
+| field | type | meaning |
+|---|---|---|
+| candidate / reference | str | `<file>:<coder_id>` of each side |
+| codebook_version | str | the codebook the code set came from |
+| split | `all` / `tune` / `test` | which rows were scored |
+| split_rule | str | the declared split rule, verbatim |
+| rows_compared | int | rows present in both codings and in the split |
+| missing_in_candidate / missing_in_reference | list of uid | rows on one side only, not scored |
+| per_code | `{code: CodeAgreement}` | one entry per codebook code |
+
+`CodeAgreement` carries `n`, `tp`, `fp`, `fn`, `tn`, `one_side_na`,
+`precision`, `recall`, `f1`, `agreement` and `cohen_kappa`. NA cells are
+excluded from `n`; a row NA on exactly one side is `one_side_na`, because it
+means the codings disagree about which rows are coded at all. A ratio with a
+zero denominator is null, and kappa is null when both codings are constant.
+
+The split is fixed before any prompt tuning: blake2b of
+`bsa-split-v1|<session>|<uid>`, 20 percent test. It is utterance-level while
+OSU has sent one session; with several sessions it moves to whole sessions
+under a new salt, which every report's `split_rule` then shows.
 
 ## 5. Identifier and label schemes
 

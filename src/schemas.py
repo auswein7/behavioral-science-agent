@@ -13,7 +13,10 @@ from pydantic import BaseModel, ConfigDict, Field
 SCHEMA_VERSION = "0.1"
 
 Role = Literal["participant", "confederate", "experimenter"]
-SourceClass = Literal["cadet_pii", "public_domain"]
+# osu_study: a session imported from OSU's own study transcripts. Human-subjects
+# data like cadet_pii, so never cleared for egress; kept distinct so the run
+# record says where the rows came from.
+SourceClass = Literal["cadet_pii", "public_domain", "osu_study"]
 Trigger = Literal["fixed_interval", "speech_start"]
 ScrubResolution = Literal["clean", "cleared_by_review", "redacted", "blocked"]
 
@@ -114,6 +117,8 @@ class CoderConfig(_Deliverable):
     max_tokens: int | None = Field(default=None, gt=0)
     temperature: float = 0.0
     seed: int | None = None
+    # Path of the codebook document (CODER_CODEBOOK); None is the placeholder.
+    codebook_path: str | None = None
 
 
 class RunConfig(_Deliverable):
