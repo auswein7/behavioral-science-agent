@@ -19,7 +19,11 @@ from src.errors import AdapterError, ConfigurationError
 from src.fairlib_adapter import FairlibChatModel
 
 
-class StubDoneReason(enum.StrEnum):
+# Plain Enum and frozen dataclasses, matching fair_llm #79: a stub more
+# forgiving than the real types (a str-backed enum equal to its string, a
+# mutable message) would let a comparison or mutation bug pass here and fail
+# against fairlib.
+class StubDoneReason(enum.Enum):
     STOP = "stop"
     LENGTH = "length"
     TOOL_CALLS = "tool_calls"
@@ -37,7 +41,7 @@ class StubUsage:
     raw_done_reason: str | None = None
 
 
-@dataclass
+@dataclass(frozen=True)
 class StubMessage:
     role: str
     content: str
@@ -53,7 +57,7 @@ class StubFairlibConfigurationError(Exception):
     pass
 
 
-class StubOutcome(enum.StrEnum):
+class StubOutcome(enum.Enum):
     COMPLETED = "completed"
     FAILED = "failed"
 

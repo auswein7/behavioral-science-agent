@@ -159,8 +159,9 @@ class FairlibUsageSubscriber:
     def _on_invocation(self, event: object) -> None:
         self.tally.calls += 1
         outcome = getattr(event, "outcome", None)
-        # ModelInvocationOutcome is a str enum whose values are the contract
-        # strings; comparing the value keeps the enum type out of this seam.
+        # ModelInvocationOutcome's values are the contract strings. Comparing
+        # the value keeps the enum type out of this seam and holds whether the
+        # enum is str-backed or plain (fair_llm #79 makes it plain).
         if getattr(outcome, "value", outcome) != "completed":
             self.tally.calls_failed += 1
         usage = getattr(event, "usage", None)
@@ -193,11 +194,11 @@ class FairlibChatModel(AbstractChatModel):
         self._message_cls, self._fairlib_error, self._fairlib_config_error = (
             _fairlib_symbols()
         )
-        # The one overflow sentinel of the #147 contract. DoneReason is a str
-        # enum whose LENGTH value is the frozen string "length", so the
-        # fallback compares equal to the real enum member; it exists only so
-        # this class still constructs against a pre-#147 fairlib (where
-        # replies carry no usage and the sentinel is never consulted).
+        # The one overflow sentinel of the #147 contract, compared as an enum
+        # member. The "length" fallback exists only so this class still
+        # constructs against a pre-#147 fairlib, where replies carry no usage
+        # and the sentinel is never consulted; it is not expected to equal the
+        # member (fair_llm #79 makes DoneReason a plain Enum).
         try:
             from fairlib.core.message import DoneReason
 
