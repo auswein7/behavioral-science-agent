@@ -299,6 +299,17 @@ authorized it - a `public_domain` session with a `clean` scrub report for its
 utterance table - and fairlib's capability bag, built from the same
 decision, grants the coder exactly that model on every call.
 
+A `reproducibility` block states whether the run's backend reproduces its
+output, from measurement and never from a capability declaration
+(`src/reproducibility.py`): `provider`, `model`, `seed`, `temperature`,
+`status` (`measured_reproducible`, `measured_not_reproducible` or
+`unmeasured`) and the dated `evidence`. As of 2026-09-10 no coder backend
+is measured reproducible: qwen2.5:14b on Ollama moved code cells across
+server states at identical code, prompt, seed and temperature, and
+gemini-3.5-flash varied at temperature 0. So any agreement figure needs
+repeated runs. The local context window is pinned (`CODER_NUM_CTX`, default
+8192, recorded in `config`) because it changes codes.
+
 `CoderConfig` carries two budget levers and they are not the same kind of
 thing. `max_tokens` (`CODER_MAX_TOKENS`) is the OUTPUT budget and is
 provider-neutral: fairlib aliases that name onto each adapter's own request

@@ -164,15 +164,21 @@ def load_coder_config(env: Mapping[str, str] | None = None) -> CoderConfig:
     ConfigurationError naming the problem; nothing else reads the levers."""
     if env is None:
         env = os.environ
+    provider = env.get("CODER_PROVIDER", "ollama")
+    # The local context window changes codes (2026-09-10: 4096 and 8192 coded
+    # differently) and, left unset, is picked by the Ollama server itself, so
+    # it is pinned here and recorded. A hosted model's window is fixed and
+    # takes no such option.
+    num_ctx_default = "8192" if provider == "ollama" else ""
     try:
         return CoderConfig(
             coder_model=env.get("CODER_MODEL", "qwen2.5:14b"),
-            provider=env.get("CODER_PROVIDER", "ollama"),
+            provider=provider,
             coder_id=env.get("CODER_ID", "fairlib_local"),
             context_utterances=int(env.get("CODER_CONTEXT_UTTERANCES", "5")),
             max_retries=int(env.get("CODER_MAX_RETRIES", "2")),
             max_steps=int(env.get("CODER_MAX_STEPS", "3")),
-            num_ctx=_optional_int(env.get("CODER_NUM_CTX")),
+            num_ctx=_optional_int(env.get("CODER_NUM_CTX", num_ctx_default)),
             max_tokens=_optional_int(env.get("CODER_MAX_TOKENS")),
             temperature=float(env.get("SAMPLING_TEMPERATURE", "0.0")),
             seed=_optional_int(env.get("SAMPLING_SEED")),

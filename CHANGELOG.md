@@ -9,6 +9,13 @@ prototype history in the upstream repo.
 Forked 2026-08-30 from `Andrew-D-Gibson/Screenplay_Video_Anonymizer` (d4af4db).
 
 ### Added
+- Measured reproducibility in the coder provenance (`src/reproducibility.py`):
+  a `reproducibility` block whose status comes from dated measurements, never
+  from a declared seed. Measured 2026-09-10: qwen2.5:14b on Ollama is not
+  reproducible across server states (same code, prompt, seed 1234 and
+  temperature 0 moved 1-2 of 5 code cells); gemini-3.5-flash is not either.
+  `CODER_NUM_CTX` now defaults to 8192 for a local coder and is recorded,
+  because the context window changes codes and Ollama otherwise picks it.
 - The PII/egress gate (ADR 0001, accepted 2026-09-10) and a Gemini coder:
   `src/egress.py` decides each coder run's destination - a remote model only
   for a `public_domain` session with a `clean` scrub report, and only public

@@ -44,6 +44,7 @@ from src.coder.deliverable import DEFAULT_OUTPUT_DIR, read_coded_json
 from src.config import load_coder_config, prompt_versions
 from src.egress import decide_egress, security_manager_for
 from src.errors import DeliverableError, PipelineError
+from src.reproducibility import reproducibility_of
 from src.schemas import (
     SCHEMA_VERSION,
     ScrubReport,
@@ -167,6 +168,14 @@ def main(argv: list[str] | None = None) -> int:
         "framework": coder.framework_provenance,
         "coder_model": coder.model_name,
         "egress": egress.model_dump(),
+        # Measured, not declared: a recorded seed is not a promise the
+        # backend reproduces its output (src/reproducibility.py).
+        "reproducibility": reproducibility_of(
+            config.provider,
+            config.coder_model,
+            seed=config.seed,
+            temperature=config.temperature,
+        ).model_dump(),
         "stage_timings": {"coder": round(time.monotonic() - clock, 2)},
         "stage_usage": {
             "coder": StageUsage(
