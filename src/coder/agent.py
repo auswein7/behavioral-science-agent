@@ -14,8 +14,9 @@ The model is a fairlib chat adapter handed in by src.backends; this module
 never learns the provider. Sampling and the output budget travel with every
 call of a run through SimpleAgent.arun(generation_options=) in fairlib's
 provider-neutral vocabulary (fair_llm #186), so one CoderConfig reaches any
-backend the same way. Input rows are Tier C (already de-identified), so the
-stage sends nothing new off-box that the gate has not passed, and the row
+backend the same way. The run's fairlib security manager (src.egress, ADR
+0001) rides on the agent's ToolExecutor, so fairlib checks the model grant
+on every call. Input rows are Tier C (already de-identified), and the row
 text is treated as untrusted data inside the prompt.
 """
 
@@ -31,7 +32,13 @@ from pydantic import ValidationError
 
 from src.adapters import UsageTally
 from src.coder.codebook import Codebook
-from src.errors import AdapterError, CoderBudgetError, CoderError, ConfigurationError
+from src.errors import (
+    AdapterError,
+    CoderBudgetError,
+    CoderError,
+    ConfigurationError,
+    GateBlockedError,
+)
 from src.fairlib_adapter import FairlibUsageSubscriber
 from src.prompts import CODER_ROLE_PROMPT
 from src.schemas import CodedUtteranceRow, UtteranceCoding, UtteranceRow
@@ -153,7 +160,7 @@ def _require_carried_options(llm: object, options: Mapping[str, object]) -> None
     if "generation_options" not in inspect.signature(SimpleAgent.arun).parameters:
         raise ConfigurationError(
             "the installed fair-llm predates SimpleAgent.arun(generation_options=) "
-            "(fair_llm #186); install the version pinned in requirements-fairlib.txt"
+            "(fair_llm #186); install the version pinned in requirements.txt"
         )
     declared = llm.get_model_capabilities().get("generation_options")  # type: ignore[attr-defined]
     if declared is None:
@@ -210,10 +217,13 @@ class FairlibAgentCoder(AbstractUtteranceCoder):
 
     llm is any fairlib AbstractChatModel. generation_options is the run's
     sampling and output budget (coder_generation_options), sent with every
-    model call; a name the model does not declare is refused here. One
-    fresh agent per utterance keeps codings independent (no memory carries
-    across rows), and codings run one at a time because the truncation
-    watch is reset per coding."""
+    model call; a name the model does not declare is refused here.
+    security_manager is the run's fairlib security manager
+    (src.egress.security_manager_for); SimpleAgent binds its executor's
+    manager for each run, so passing it here is what puts fairlib's model
+    grant on every call. One fresh agent per utterance keeps codings
+    independent (no memory carries across rows), and codings run one at a
+    time because the truncation watch is reset per coding."""
 
     def __init__(
         self,
@@ -224,6 +234,7 @@ class FairlibAgentCoder(AbstractUtteranceCoder):
         max_steps: int = 3,
         usage_tally: UsageTally | None = None,
         generation_options: Mapping[str, object] | None = None,
+        security_manager: object | None = None,
     ) -> None:
         from fairlib.core.event_bus import AgentEventBus
 
@@ -233,6 +244,7 @@ class FairlibAgentCoder(AbstractUtteranceCoder):
         self._max_steps = max_steps
         self._role = render_coder_role(codebook)
         self._options = dict(generation_options or {})
+        self._security = security_manager
         _require_carried_options(llm, self._options)
         # SimpleAgent binds its model to the agent's bus at construction, so
         # the stage's subscribers attach to a bus this coder owns and hands
@@ -296,7 +308,7 @@ class FairlibAgentCoder(AbstractUtteranceCoder):
         return SimpleAgent(
             llm=self._llm,
             planner=planner,
-            tool_executor=ToolExecutor(registry),
+            tool_executor=ToolExecutor(registry, security_manager=self._security),
             memory=WorkingMemory(),
             max_steps=self._max_steps,
             role_description=self._role,
@@ -333,6 +345,7 @@ class FairlibAgentCoder(AbstractUtteranceCoder):
             PlannerParseError,
             ValidatorRejectedError,
         )
+        from fairlib.core.errors import CapabilityDeniedError
 
         self._watch.truncated = False
         run_options = {"generation_options": self._options} if self._options else {}
@@ -343,6 +356,12 @@ class FairlibAgentCoder(AbstractUtteranceCoder):
                 max_retries=self._max_retries,
                 **run_options,
             )
+        except CapabilityDeniedError as exc:
+            # fairlib's grant is the backstop of the egress gate (ADR 0001):
+            # a denial is terminal, never retried or downgraded.
+            raise GateBlockedError(
+                f"fairlib denied the coder model on {row.uid}: {exc}"
+            ) from exc
         except ValidatorRejectedError as exc:
             self._raise_if_truncated(row.uid, exc.attempt_count, exc)
             raise CoderError(

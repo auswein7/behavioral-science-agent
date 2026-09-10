@@ -2,14 +2,21 @@
 
 Run from the repo root:
 python -m src.cli.code_utterances <session>.utterances.json [--output-dir DIR]
+    [--manifest <session>.manifest.json] [--scrub-report <file>.scrub_report.json]
 
 The input is the 4.1 JSON deliverable, a Tier C artifact that already
 passed the scrub gate; this stage adds OSU's codes to it and writes
 <session_id>.coded.json (rewritten after every row, so an interrupted run
 resumes from it), <session_id>.coded.csv in OSU's flattened column shape,
 and <session_id>.coder_provenance.json with the resolved config, codebook
-digest, prompt version and per-stage usage. Levers come from the
-environment through load_coder_config; nothing here reads os.environ.
+digest, prompt version, per-stage usage and the egress decision. Levers come
+from the environment through load_coder_config; nothing here reads
+os.environ.
+
+CODER_PROVIDER=gemini sends the rows off the box, so it runs only when the
+egress gate passes (docs/adr/0001-egress-gate.md): --manifest must name a
+public_domain session and --scrub-report a "clean" report for this
+session's utterance table. Cadet and OSU-study sessions are always refused.
 """
 
 import argparse
@@ -35,8 +42,15 @@ from src.coder import (
 from src.coder.codebook import resolve_codebook
 from src.coder.deliverable import DEFAULT_OUTPUT_DIR, read_coded_json
 from src.config import load_coder_config, prompt_versions
+from src.egress import decide_egress, security_manager_for
 from src.errors import DeliverableError, PipelineError
-from src.schemas import SCHEMA_VERSION, StageUsage, UtteranceRow
+from src.schemas import (
+    SCHEMA_VERSION,
+    ScrubReport,
+    SessionManifest,
+    StageUsage,
+    UtteranceRow,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -52,10 +66,22 @@ def _load_rows(path: Path) -> tuple[str, list[UtteranceRow]]:
     return rows[0].document, rows
 
 
+def _load_optional(path: Path | None, model: type, what: str):
+    """A manifest or scrub report named on the command line, or None."""
+    if path is None:
+        return None
+    try:
+        return model.model_validate_json(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise DeliverableError(f"cannot read the {what} {path}: {exc}") from exc
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("utterances_json", type=Path)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
+    parser.add_argument("--manifest", type=Path)
+    parser.add_argument("--scrub-report", type=Path)
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
@@ -70,13 +96,29 @@ def main(argv: list[str] | None = None) -> int:
         )
     session_id, rows = _load_rows(args.utterances_json)
 
+    # The egress gate decides before any model exists (ADR 0001).
+    egress = decide_egress(
+        config.provider,
+        config.coder_model,
+        session_id=session_id,
+        manifest=_load_optional(args.manifest, SessionManifest, "manifest"),
+        scrub_report=_load_optional(args.scrub_report, ScrubReport, "scrub report"),
+    )
+    if egress.remote:
+        logger.warning(
+            "egress authorized: %s rows go to %s (%s)",
+            session_id,
+            egress.destination,
+            egress.model,
+        )
+
     coded_path = args.output_dir / f"{session_id}.coded.json"
     coded = read_coded_json(coded_path) if coded_path.exists() else []
     if coded:
         logger.info("resuming: %d rows already coded in %s", len(coded), coded_path)
 
     tally = UsageTally()
-    llm = build_coder_llm(config.provider, config.coder_model, num_ctx=config.num_ctx)
+    llm = build_coder_llm(config.provider, config.coder_model, num_ctx=config.num_ctx, egress=egress)
     coder = FairlibAgentCoder(
         llm,
         codebook,
@@ -88,6 +130,7 @@ def main(argv: list[str] | None = None) -> int:
             seed=config.seed,
             max_tokens=config.max_tokens,
         ),
+        security_manager=security_manager_for(egress),
     )
     started = datetime.now(UTC)
     clock = time.monotonic()
@@ -123,6 +166,7 @@ def main(argv: list[str] | None = None) -> int:
         # reported version, different planner prompt, different codes).
         "framework": coder.framework_provenance,
         "coder_model": coder.model_name,
+        "egress": egress.model_dump(),
         "stage_timings": {"coder": round(time.monotonic() - clock, 2)},
         "stage_usage": {
             "coder": StageUsage(

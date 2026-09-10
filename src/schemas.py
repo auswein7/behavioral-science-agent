@@ -100,11 +100,11 @@ class SamplingConfig(_Deliverable):
 class CoderConfig(_Deliverable):
     """Typed configuration for the coder stage (DATA_MODEL 4.5); the .env
     file feeds this. provider names the fairlib adapter family the agent's
-    model comes from; only local providers are constructible until the
-    egress gate (adoption map item e) binds a remote one."""
+    model comes from: ollama is local; gemini is the one remote destination
+    ADR 0001 allows, and it runs only when the egress gate authorizes it."""
 
     coder_model: str
-    provider: Literal["ollama"] = "ollama"
+    provider: Literal["ollama", "gemini"] = "ollama"
     coder_id: str = Field(min_length=1, pattern=r"^[A-Za-z0-9_]+$")
     context_utterances: int = Field(default=5, ge=0)
     max_retries: int = Field(default=2, ge=0)

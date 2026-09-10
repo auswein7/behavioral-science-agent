@@ -203,15 +203,19 @@ class TestCoderConfig:
     def test_bad_values_are_configuration_errors(self):
         with pytest.raises(ConfigurationError, match="invalid coder configuration"):
             load_coder_config({"CODER_CONTEXT_UTTERANCES": "many"})
+        # gemini is a valid provider since ADR 0001; a provider off the
+        # destination list is still refused at the config boundary.
         with pytest.raises(ConfigurationError, match="provider"):
-            load_coder_config({"CODER_PROVIDER": "gemini"})
+            load_coder_config({"CODER_PROVIDER": "anthropic"})
         with pytest.raises(ConfigurationError, match="coder_id"):
             load_coder_config({"CODER_ID": "has space"})
 
 
 class TestBuildCoderLlm:
     def test_remote_provider_is_refused_as_egress(self):
-        with pytest.raises(ConfigurationError, match="egress"):
+        from src.errors import GateBlockedError
+
+        with pytest.raises(GateBlockedError, match="egress"):
             build_coder_llm("anthropic", "claude")
 
     def test_unknown_provider_is_refused(self):

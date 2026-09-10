@@ -9,6 +9,16 @@ prototype history in the upstream repo.
 Forked 2026-08-30 from `Andrew-D-Gibson/Screenplay_Video_Anonymizer` (d4af4db).
 
 ### Added
+- The PII/egress gate (ADR 0001, accepted 2026-09-10) and a Gemini coder:
+  `src/egress.py` decides each coder run's destination - a remote model only
+  for a `public_domain` session with a `clean` scrub report, and only public
+  Gemini (fixed endpoint) on the destination list - and builds the fairlib
+  capability bag granting exactly the decided model, which the coder's
+  `ToolExecutor` carries so fairlib checks it on every call. `CODER_PROVIDER=gemini`
+  and `--manifest` / `--scrub-report` on the coder CLI; the decision is the
+  provenance's `egress` block. A fairlib denial is a `GateBlockedError`.
+  Anthropic and OpenAI stay refused. A live Gemini test self-skips without
+  `GEMINI_API_KEY`.
 - Evaluation harness (`src/evaluation`, `python -m src.cli.evaluate_coding`):
   per-code precision, recall, F1, agreement and Cohen's kappa between a
   candidate coding and a reference, never pooled accuracy; NA rows excluded

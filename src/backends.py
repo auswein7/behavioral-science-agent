@@ -39,7 +39,8 @@ from src.adapters import (
     UsageTally,
     ensure_ollama_model,
 )
-from src.errors import ConfigurationError
+from src.egress import REMOTE_DESTINATIONS, EgressDecision
+from src.errors import ConfigurationError, GateBlockedError
 from src.fairlib_adapter import (
     FairlibChatModel,
     FairlibUsageSubscriber,
@@ -223,25 +224,66 @@ def fairlib_coder_adapter(model_name: str, *, num_ctx: int | None = None) -> obj
     return _fairlib_ollama_adapter_cls()(model_name=model_name, vision=False, options=options)
 
 
-def build_coder_llm(provider: str, model_name: str, *, num_ctx: int | None = None) -> object:
+def fairlib_gemini_adapter(model_name: str) -> object:
+    """The public Gemini adapter (fair_llm #186). Its endpoint is fixed by
+    fairlib and cannot be moved at construction or per call; fairlib reads
+    the key from GEMINI_API_KEY or GOOGLE_API_KEY. Construction is offline.
+
+    Raises ConfigurationError when google-genai is missing or no key is set,
+    before any call."""
+    try:
+        from fairlib.core.errors import FairlibError
+        from fairlib.modules.mal.gemini_adapter import GeminiAdapter
+    except ImportError as exc:
+        raise ConfigurationError(
+            "the Gemini coder needs fair-llm's Gemini adapter and google-genai"
+        ) from exc
+    try:
+        return GeminiAdapter(model_name=model_name)
+    except (FairlibError, ImportError) as exc:
+        raise ConfigurationError(
+            f"cannot construct the Gemini coder model ({exc}); set GEMINI_API_KEY"
+        ) from exc
+
+
+def build_coder_llm(
+    provider: str,
+    model_name: str,
+    *,
+    num_ctx: int | None = None,
+    egress: EgressDecision | None = None,
+) -> object:
     """Construct the coder stage's fairlib chat model for the configured
     provider. Usage accounting is not bound here: the coder's SimpleAgent
     owns the event bus and binds the model to it, so the tally attaches
     there (FairlibAgentCoder usage_tally). Sampling and the output budget are
     the coder's run options, not construction arguments.
 
-    Only "ollama" is constructible: a remote provider is a network egress and
-    stays refused until the PII/egress boundary is bound (ADR 0001, adoption
-    map item e). fairlib ships the Gemini adapter as of fair_llm #186, so
-    the gate is now the only block. The refusal is typed, not a fallback."""
+    A remote provider is constructed only under an EgressDecision that
+    authorized exactly this provider and model (ADR 0001): our gate decides
+    first, and without its decision there is no remote model to call. A
+    provider off the destination list is a GateBlockedError, not a fallback."""
     if provider == "ollama":
         return fairlib_coder_adapter(model_name, num_ctx=num_ctx)
-    if provider in {"anthropic", "openai", "gemini"}:
-        raise ConfigurationError(
-            f"CODER_PROVIDER={provider} is a network egress and is not yet "
-            "behind the PII/egress gate (ADR 0001, adoption map item e). "
-            "Use CODER_PROVIDER=ollama."
+    if provider in {"anthropic", "openai"}:
+        raise GateBlockedError(
+            f"CODER_PROVIDER={provider} is not an allowed egress destination "
+            f"(ADR 0001 ruling 2 allows {sorted(REMOTE_DESTINATIONS)})"
         )
-    raise ConfigurationError(
-        f"unknown coder provider '{provider}'; expected 'ollama'"
-    )
+    if provider not in REMOTE_DESTINATIONS:
+        raise ConfigurationError(
+            f"unknown coder provider '{provider}'; expected 'ollama' or 'gemini'"
+        )
+    if egress is None or not egress.remote or (egress.provider, egress.model) != (
+        provider,
+        model_name,
+    ):
+        raise GateBlockedError(
+            f"no egress decision authorizes {provider}/{model_name}; the egress "
+            "gate (src.egress.decide_egress) must pass first (ADR 0001)"
+        )
+    if num_ctx is not None:
+        raise ConfigurationError(
+            "CODER_NUM_CTX is an Ollama option; a hosted model's context window is fixed"
+        )
+    return fairlib_gemini_adapter(model_name)

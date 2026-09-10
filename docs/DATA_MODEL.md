@@ -291,6 +291,14 @@ version, model, timing and `StageUsage` (4.3) for the stage, plus a
 | planner_prompt_digest | str | blake2b-128 of the planner system prompt as rendered for this run |
 | planner_prompt_chars | str | length of that prompt |
 
+The provenance also carries an `egress` block, the gate's `EgressDecision`
+(ADR 0001): `provider`, `model`, `remote`, `destination` (`host:port`, null
+when local), `session_id`, `source_class`, `scrub_artifact`,
+`scrub_resolution` and `decided`. A remote run exists only when the decision
+authorized it - a `public_domain` session with a `clean` scrub report for its
+utterance table - and fairlib's capability bag, built from the same
+decision, grants the coder exactly that model on every call.
+
 `CoderConfig` carries two budget levers and they are not the same kind of
 thing. `max_tokens` (`CODER_MAX_TOKENS`) is the OUTPUT budget and is
 provider-neutral: fairlib aliases that name onto each adapter's own request

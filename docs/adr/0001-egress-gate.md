@@ -1,6 +1,7 @@
 # ADR 0001: Where the PII/egress boundary is enforced
 
-Status: PROPOSED - needs Austin's ruling before any consumer code lands.
+Status: ACCEPTED 2026-09-10 (Austin delegated the open questions to Claude's
+judgment; rulings below).
 Date: 2026-09-08
 Context: fairlib adoption map item (e); unblocks the coder's remote providers.
 Related: fair_llm #167 (CapabilityBag / BasicSecurityManager), #173
@@ -80,7 +81,7 @@ question.
    PARTICULAR TEXT MOVE. No artifact may be placed in a message bound for a
    remotely-granted adapter unless it carries a Tier C classification from our
    own gate - `resolution` of "clean" or "cleared_by_review", recorded with the
-   run.
+   run. (Narrowed by ruling 1 below: egress requires "clean".)
 
 Ordering and authority: our classification runs FIRST, because it happens where
 the coder's input is assembled, before any adapter is constructed. Fairlib's
@@ -123,6 +124,10 @@ labels, we do not adopt it and we keep our own pre-adapter check.
   principle 6 forbids, and it would make the double gate look instrumented when
   it is not. Framework-emitted events at the adapter seam are a REQUIREMENT we
   ask fair_llm #173 to carry, not an assumption this ADR builds on.
+  (Update 2026-09-10: inside a SimpleAgent run, SimpleAgent does emit
+  `CapabilityDeniedEvent` around a denied planner call and validator rewrite
+  before re-raising; only a direct `llm.invoke()` outside SimpleAgent is
+  unaudited. The coder always runs through `SimpleAgent.arun`.)
 - The captioner's permanent local-only status becomes expressible and testable:
   a test asserts the captioning stage's bag denies every remote host.
 
@@ -149,7 +154,7 @@ de-identified. It would authorize sending Tier A material to an allowed host.
 One merged gate. Rejected: it couples our leak taxonomy to fairlib's release
 cycle and puts domain knowledge in a framework that should not carry it.
 
-## Open questions for Austin
+## Open questions (as posed 2026-09-08)
 
 1. Does the human-clearance path (`--cleared-by`) authorize EGRESS, or only
    local delivery? A screenplay cleared by a reviewer is Tier C by our rules,
@@ -169,3 +174,39 @@ cycle and puts domain knowledge in a framework that should not carry it.
    not a boolean someone flips. With GenAI.mil deferred, public-domain corpus
    work is the ONLY near-term egress case, so this ruling is what actually
    unblocks the coder's remote providers.
+
+## Rulings (2026-09-10)
+
+Austin delegated these to Claude's best judgment. Each chooses the more
+conservative option where the two differ.
+
+1. Human clearance does NOT authorize egress. A remote destination requires a
+   `ScrubReport` with resolution "clean" for the exact session whose rows are
+   sent. "cleared_by_review" keeps its meaning for local delivery. The
+   second-approver path is not built; if egress of a reviewer-cleared artifact
+   is ever needed it comes back here as an amendment naming who approves.
+
+2. The remote destination list is exactly one entry: public Gemini, fixed
+   endpoint `generativelanguage.googleapis.com:443`. It is the model OSU's
+   baseline used (gemini-3.5-flash), and the only frontier adapter verified on
+   the wire. Anthropic and OpenAI stay refused until a use case and a live
+   verification exist. The list lives in code (`src/egress.py`), never in
+   `.env` or any config file, and it changes only by a PR that amends this ADR
+   - so no lever widens it.
+
+3. The exemption follows the source class, and only `public_domain` may leave
+   the box. `cadet_pii` and `osu_study` never do, whatever the gate says,
+   because neither frontier service is cleared for human-subjects data. The
+   fairlib side is a capability bag built in code from the egress decision: a
+   remote model is granted only when our decision authorized it, so a manifest
+   edit alone cannot open egress - it would also need a clean gate report for
+   that session, and the destination would still have to be on the list.
+
+Implementation notes. SimpleAgent binds its tool executor's security manager
+for each run and so replaces any binding made outside it; the coder therefore
+passes a `BasicSecurityManager` carrying the bag to the `ToolExecutor` it
+builds the agent with, which puts fairlib's model check on every call of the
+run. The coder provenance gains an `egress` block recording the decision
+(destination, source class, the scrub report's session and resolution). The
+captioning-stage bag (Decision 1's permanent local-only test) is a follow-up;
+the captioner has no remote backend to point at today.
