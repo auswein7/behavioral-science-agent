@@ -58,7 +58,10 @@ MEASUREMENTS = MappingProxyType(
                 "Ollama 0.33.1), and even at a fixed num_ctx the server's state moved "
                 "output. Stable within one load and request sequence (2026-09-08: "
                 "0/36 unstable cells over 3 back-to-back passes; num_ctx 4096 "
-                "identical across a forced reload). Repeat runs for any parity figure."
+                "identical across a forced reload), and OSU session S1T1 (87 coded "
+                "rows) was identical across two loads at num_ctx 32768 and 8192, so "
+                "the variation is intermittent, not constant. Repeat runs for any "
+                "parity figure."
             ),
         ),
         ("ollama", "llama3.1:8b"): Measurement(

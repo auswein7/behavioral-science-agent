@@ -43,7 +43,16 @@ The coder stage (OSU behavior codes, `docs/DATA_MODEL.md` 4.5) runs on the deliv
 python -m src.cli.code_utterances data/deliverables/<session_id>.utterances.json
 ```
 
-It writes `<session_id>.coded.csv` / `.coded.json` and `<session_id>.coder_provenance.json`; `CODER_MODEL`, `CODER_ID` and the other `CODER_*` levers are documented in `.env.example`. Until OSU's codebook is loaded it codes with a placeholder codebook and says so.
+It writes `<session_id>.coded.csv` / `.coded.json` and `<session_id>.coder_provenance.json`; `CODER_MODEL`, `CODER_ID` and the other `CODER_*` levers are documented in `.env.example`. Until OSU's codebook is loaded (`CODER_CODEBOOK`, template `docs/codebook.example.json`) it codes with a placeholder codebook and says so. `CODER_PROVIDER=gemini` sends rows to public Gemini and is refused unless the session is public-domain footage with a clean gate report (`--manifest`, `--scrub-report`; `docs/adr/0001-egress-gate.md`).
+
+Score a coding against a reference (per-code precision, recall, F1 and Cohen's kappa), and import an OSU coded-transcript workbook to code OSU's own sessions:
+
+```
+python -m src.cli.evaluate_coding <candidate.coded.json> <reference.xlsx> --candidate-id <id> --reference-id <id>
+python -m src.cli.import_osu_transcript <workbook.xlsx> --session-id <id>
+```
+
+`docs/OSU_GUIDE.md` is the step-by-step guide for running all of this at OSU, with the checklist to clear before anything is shared.
 
 Each stage can also be run independently as a module — see `CLAUDE.md` for the full breakdown of the `src/cli/` entry points (transcribe-only, caption-only, tone-only, merge-only, write-only, utterance-table, faithfulness check).
 

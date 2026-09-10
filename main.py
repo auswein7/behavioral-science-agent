@@ -11,6 +11,11 @@ needs as arguments. Environment values become a typed RunConfig via
 src/config.py, and a preflight check fails fast on a missing token, model, or
 GPU before any expensive work starts.
 
+Observability: every stage emits typed events on a fairlib AgentEventBus
+(src/events.py) - started, finished, resumed, degraded, failed - and the gate
+emits its decision. The run log and the provenance's stage timings are
+subscribers to that bus.
+
 Resumability: --from <stage> skips earlier stages and loads their persisted
 outputs instead (e.g. --from screenplay redoes only the Ornith stage after a
 crash, instead of five hours of captioning). Stage logs also stream to
@@ -22,17 +27,18 @@ import hashlib
 import logging
 import os
 import platform
-import time
 from datetime import UTC, datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
+from fairlib.core.event_bus import AgentEventBus
 
 from src.adapters import UsageTally
 from src.backends import build_caption_model, build_screenplay_model
 from src.captioning import caption_video
 from src.captioning import write_json as write_captions_json
 from src.config import load_run_config, preflight
+from src.events import PipelineEvents, RunLog, StageTimings
 from src.persist import read_records
 from src.reliability import RETRYABLE
 from src.schemas import RunConfig, RunProvenance, SessionManifest, StageUsage
@@ -97,7 +103,7 @@ def _software_versions() -> dict[str, str]:
     from importlib.metadata import PackageNotFoundError, version
 
     versions = {"python": platform.python_version()}
-    for package in ("whisperx", "funasr", "spacy", "ollama", "pydantic", "av"):
+    for package in ("whisperx", "funasr", "spacy", "ollama", "pydantic", "av", "fair-llm"):
         try:
             versions[package] = version(package)
         except PackageNotFoundError:
@@ -146,119 +152,137 @@ def main() -> None:
     session_id = manifest.session_id if manifest else name
     num_speakers = manifest.expected_speaker_count if manifest else config.transcription.num_speakers
 
+    # Stage events: the run log and the provenance timings subscribe here;
+    # nothing below times or narrates a stage by hand (design principle 4).
+    bus = AgentEventBus()
+    pipeline = PipelineEvents(bus, run_id)
+    stage_timings = StageTimings()
+    stage_timings.subscribe(bus)
+    RunLog().subscribe(bus)
+
     preflight(config, hf_token, need_transcription=start <= STAGES.index("tone"),
               need_captioning=start <= STAGES.index("caption"))
 
-    timings: dict[str, float] = {}
     usage_tallies: dict[str, UsageTally] = {}
     audio = None
     if start <= STAGES.index("tone"):
         audio = load_audio_numpy_array(video_path)
 
     if start <= STAGES.index("transcribe"):
-        logger.info("[1/5] Transcribing audio: %s", video_path)
-        t0 = time.monotonic()
-        diarize_result = diarize_transcript(
-            audio,
-            hf_token=hf_token,
-            device=config.transcription.device,
-            compute_type=config.transcription.compute_type,
-            whisper_model=config.transcription.whisper_model,
-            batch_size=config.transcription.batch_size,
-            num_speakers=num_speakers,
-            min_speakers=config.transcription.min_speakers,
-            max_speakers=config.transcription.max_speakers,
-            language=config.transcription.language,
-        )
-        transcript_records = format_segments(diarize_result["segments"])
-        write_transcript_json(transcript_records, name, TRANSCRIPTS_DIR)
-        timings["transcribe"] = time.monotonic() - t0
+        with pipeline.stage("transcribe") as stage:
+            diarize_result = diarize_transcript(
+                audio,
+                hf_token=hf_token,
+                device=config.transcription.device,
+                compute_type=config.transcription.compute_type,
+                whisper_model=config.transcription.whisper_model,
+                batch_size=config.transcription.batch_size,
+                num_speakers=num_speakers,
+                min_speakers=config.transcription.min_speakers,
+                max_speakers=config.transcription.max_speakers,
+                language=config.transcription.language,
+            )
+            transcript_records = format_segments(diarize_result["segments"])
+            write_transcript_json(transcript_records, name, TRANSCRIPTS_DIR)
+            stage.records = len(transcript_records)
         if manifest:
             found = len({r["speaker"] for r in transcript_records})
             if found != manifest.expected_speaker_count:
-                logger.warning(
-                    "Diarization found %d speakers but the manifest expects %d - "
-                    "review speaker assignments before delivering",
-                    found, manifest.expected_speaker_count,
+                pipeline.degraded(
+                    "transcribe",
+                    f"diarization found {found} speakers but the manifest expects "
+                    f"{manifest.expected_speaker_count}; review speaker assignments "
+                    "before delivering",
                 )
     else:
-        transcript_records = read_records(TRANSCRIPTS_DIR / f"{name}.formatted.json")
-        logger.info("[1/5] Resumed: loaded %d transcript records", len(transcript_records))
+        source = TRANSCRIPTS_DIR / f"{name}.formatted.json"
+        transcript_records = read_records(source)
+        pipeline.resumed("transcribe", len(transcript_records), source.name)
 
     if start <= STAGES.index("tone"):
-        logger.info("[2/5] Classifying utterance tone: %s", video_path)
-        t0 = time.monotonic()
-        tone_records = classify_tone(transcript_records, audio, model_name=config.tone.tone_model)
-        write_tone_json(tone_records, name, TRANSCRIPTS_DIR)
-        timings["tone"] = time.monotonic() - t0
+        with pipeline.stage("tone") as stage:
+            tone_records = classify_tone(transcript_records, audio, model_name=config.tone.tone_model)
+            write_tone_json(tone_records, name, TRANSCRIPTS_DIR)
+            stage.records = len(tone_records)
     else:
-        tone_records = read_records(TRANSCRIPTS_DIR / f"{name}.formatted.tone.json")
-        logger.info("[2/5] Resumed: loaded %d tone records", len(tone_records))
+        source = TRANSCRIPTS_DIR / f"{name}.formatted.tone.json"
+        tone_records = read_records(source)
+        pipeline.resumed("tone", len(tone_records), source.name)
 
     # Deterministic spoken-name scrub: downstream stages (Ornith, the utterance
     # table) only ever see the scrubbed dialogue; the verbatim transcript stays
     # Tier B on disk alongside the replacement log. Cheap, so it always reruns.
-    tone_records, replacements = scrub_names(tone_records)
-    write_scrubbed_json(tone_records, replacements, name, TRANSCRIPTS_DIR)
+    with pipeline.stage("scrub_names") as stage:
+        tone_records, replacements = scrub_names(tone_records)
+        write_scrubbed_json(tone_records, replacements, name, TRANSCRIPTS_DIR)
+        stage.records = len(replacements)
 
     if start <= STAGES.index("caption"):
-        logger.info("[3/5] Captioning video frames (fixed-interval + speech-start): %s", video_path)
-        t0 = time.monotonic()
-        usage_tallies["caption"] = UsageTally()
-        caption_model = build_caption_model(
-            config.captioning.backend,
-            config.captioning.caption_model,
-            usage_tally=usage_tallies["caption"],
-        )
-        caption_records = caption_video(
-            video_path,
-            fps=config.captioning.fps,
-            model=caption_model,
-            context_captions=config.captioning.context_captions,
-            utterances=[{"start": r["start"], "speaker": r["speaker"]} for r in tone_records],
-            speech_start_offset=config.captioning.speech_frame_offset,
-            burst_count=config.captioning.burst_frames,
-            burst_spacing=config.captioning.burst_spacing,
-            max_dimension=config.captioning.max_dimension,
-            temperature=config.sampling.temperature,
-            seed=config.sampling.seed,
-            checkpoint_path=CAPTIONS_DIR / f"{name}.captions.partial.json",
-        )
-        write_captions_json(caption_records, name, CAPTIONS_DIR)
-        scrub_check("\n".join(record["caption"] for record in caption_records), "captions")
-        timings["caption"] = time.monotonic() - t0
+        with pipeline.stage("caption") as stage:
+            usage_tallies["caption"] = UsageTally()
+            caption_model = build_caption_model(
+                config.captioning.backend,
+                config.captioning.caption_model,
+                usage_tally=usage_tallies["caption"],
+            )
+            caption_records = caption_video(
+                video_path,
+                fps=config.captioning.fps,
+                model=caption_model,
+                context_captions=config.captioning.context_captions,
+                utterances=[{"start": r["start"], "speaker": r["speaker"]} for r in tone_records],
+                speech_start_offset=config.captioning.speech_frame_offset,
+                burst_count=config.captioning.burst_frames,
+                burst_spacing=config.captioning.burst_spacing,
+                max_dimension=config.captioning.max_dimension,
+                temperature=config.sampling.temperature,
+                seed=config.sampling.seed,
+                checkpoint_path=CAPTIONS_DIR / f"{name}.captions.partial.json",
+            )
+            write_captions_json(caption_records, name, CAPTIONS_DIR)
+            stage.records = len(caption_records)
+        flagged = scrub_check("\n".join(record["caption"] for record in caption_records), "captions")
+        if flagged:
+            pipeline.degraded(
+                "caption",
+                f"scrub_check flagged {len(flagged)} caption term(s); the screenplay gate decides",
+            )
     else:
-        caption_records = read_records(CAPTIONS_DIR / f"{name}.captions.json")
-        logger.info("[3/5] Resumed: loaded %d caption records", len(caption_records))
+        source = CAPTIONS_DIR / f"{name}.captions.json"
+        caption_records = read_records(source)
+        pipeline.resumed("caption", len(caption_records), source.name)
 
     if start <= STAGES.index("merge"):
-        logger.info("[4/5] Merging tone-coded transcript and captions into one timeline")
-        events = merge_screenplay(caption_records, tone_records)
-        write_screenplay_json(events, name, SCREENPLAYS_DIR)
+        with pipeline.stage("merge") as stage:
+            events = merge_screenplay(caption_records, tone_records)
+            write_screenplay_json(events, name, SCREENPLAYS_DIR)
+            stage.records = len(events)
     else:
-        events = read_records(SCREENPLAYS_DIR / f"{name}.screenplay.json")
-        logger.info("[4/5] Resumed: loaded %d merged events", len(events))
+        source = SCREENPLAYS_DIR / f"{name}.screenplay.json"
+        events = read_records(source)
+        pipeline.resumed("merge", len(events), source.name)
 
-    logger.info("[5/5] Writing final screenplay with Ornith")
-    t0 = time.monotonic()
-    template = TEMPLATE_PATH.read_text()
-    usage_tallies["screenplay"] = UsageTally()
-    screenplay_model = build_screenplay_model(
-        config.screenplay.backend,
-        config.screenplay.ornith_model,
-        unavailable_hint=ORNITH_UNAVAILABLE_HINT,
-        usage_tally=usage_tallies["screenplay"],
-    )
-    screenplay_md = write_screenplay(
-        events,
-        template,
-        model=screenplay_model,
-        temperature=config.sampling.temperature,
-        seed=config.sampling.seed,
-        num_ctx=config.screenplay.num_ctx,
-    )
-    output_path = write_screenplay_md(screenplay_md, name, SCREENPLAYS_DIR)
-    timings["screenplay"] = time.monotonic() - t0
+    with pipeline.stage("screenplay") as stage:
+        template = TEMPLATE_PATH.read_text()
+        usage_tallies["screenplay"] = UsageTally()
+        screenplay_model = build_screenplay_model(
+            config.screenplay.backend,
+            config.screenplay.ornith_model,
+            unavailable_hint=ORNITH_UNAVAILABLE_HINT,
+            usage_tally=usage_tallies["screenplay"],
+        )
+        screenplay_md = write_screenplay(
+            events,
+            template,
+            model=screenplay_model,
+            temperature=config.sampling.temperature,
+            seed=config.sampling.seed,
+            num_ctx=config.screenplay.num_ctx,
+        )
+        output_path = write_screenplay_md(screenplay_md, name, SCREENPLAYS_DIR)
+        # One Markdown document, not records; the faithfulness check counts
+        # what it contains.
+        stage.records = None
 
     provenance = RunProvenance(
         session_id=session_id,
@@ -271,7 +295,7 @@ def main() -> None:
         model_digests=_model_digests(config),
         prompt_versions=config.prompt_versions,
         software=_software_versions(),
-        stage_timings={stage: round(seconds, 2) for stage, seconds in timings.items()},
+        stage_timings=stage_timings.rounded(),
         stage_usage={
             stage: StageUsage(
                 calls=tally.calls,
@@ -300,6 +324,11 @@ def main() -> None:
     )
     write_findings(gate_result)
     write_report(gate_result, DELIVERABLES_DIR)
+    pipeline.gate_decided(
+        gate_result.report.artifact,
+        gate_result.report.resolution,
+        sum(gate_result.report.findings_by_category.values()),
+    )
     logger.info("Pipeline complete: %s", output_path)
     require_pass(gate_result)
 

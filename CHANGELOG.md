@@ -9,6 +9,17 @@ prototype history in the upstream repo.
 Forked 2026-08-30 from `Andrew-D-Gibson/Screenplay_Video_Anonymizer` (d4af4db).
 
 ### Added
+- Pipeline stage events (fairlib adoption map item c, design principle 4):
+  `src/events.py` defines typed `StageStarted` / `StageFinished` /
+  `StageResumed` / `StageDegraded` / `StageFailed` / `GateDecided` events on a
+  fairlib `AgentEventBus`; `main.py` emits them for every stage, and the run
+  log and the provenance's `stage_timings` are subscribers instead of hand
+  timing and narration. The diarization speaker-count mismatch and caption
+  scrub_check flags are now `StageDegraded` events. `fair-llm` joins the
+  provenance's software versions.
+- `docs/OSU_GUIDE.md`: install, hardware as tested, run, the pre-sharing
+  checklist, coding, evaluation and the egress rules, for an OSU research
+  assistant.
 - Measured reproducibility in the coder provenance (`src/reproducibility.py`):
   a `reproducibility` block whose status comes from dated measurements, never
   from a declared seed. Measured 2026-09-10: qwen2.5:14b on Ollama is not
