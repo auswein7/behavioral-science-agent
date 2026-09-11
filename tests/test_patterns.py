@@ -68,3 +68,31 @@ class TestFirstLineIsALineStart:
         # rest are real mid-line capitals and the gate should say so.
         names = self._names("# A Responsibility for Our Blue Planet\n")
         assert names == ["Responsibility", "Our", "Blue", "Planet"]
+
+
+class TestCsvFieldOpeningIsABoundary:
+    """The utterance table is gated as serialized CSV. Run 4's table tripped
+    likely_name 14 times on field-initial words and the low_confidence boolean;
+    a quoted field opening is a sentence start and the boolean is schema."""
+
+    @staticmethod
+    def _names(text: str) -> list[str]:
+        return [term for category, term, _ in iter_findings(text) if category == "likely_name"]
+
+    def test_field_initial_word_excluded(self):
+        row = '"s1","u001","1","SPEAKER_00","We are at a unique stage.","NA","False","Then it rains."'
+        assert self._names(row) == []
+
+    def test_first_field_of_the_file_excluded(self):
+        assert self._names('"Attenborough","u001"') == []
+
+    def test_boolean_literals_allowlisted(self):
+        assert self._names('"neutral","True","x"\n"neutral","False","y"') == []
+
+    def test_name_mid_field_still_caught(self):
+        assert self._names('"u001","We asked Sarah to start."') == ["Sarah"]
+
+    def test_name_opening_a_field_is_the_accepted_miss(self):
+        # Same trade as sentence-initial words: a field-initial name is not
+        # distinguishable from a field-initial word by regex alone.
+        assert self._names('"u001","Sarah nodded."') == []

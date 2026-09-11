@@ -111,6 +111,14 @@ Forked 2026-08-30 from `Andrew-D-Gibson/Screenplay_Video_Anonymizer` (d4af4db).
   `PipelineError` hierarchy (`src/errors.py`).
 
 ### Fixed
+- The scrub gate flagged the utterance table's own CSV serialization as
+  likely names: a quoted field opening was not a sentence boundary, so every
+  field-initial word (`We`, `Never`, `And`) and the `low_confidence` boolean
+  literal counted as a finding (14 on the gate-clean Attenborough run). A
+  quoted CSV field opening is now a boundary and `true` / `false` are
+  allowlisted, with the same accepted miss as sentence-initial words. First
+  utterance table to pass the gate `clean`: `Attenborough.utterances.csv`
+  (2026-09-11).
 - `_hhmmss` millisecond rounding could render `".1000"`.
 - Utterance-table builder crashed on records with no word-level confidence
   data; such rows are now flagged `low_confidence`.

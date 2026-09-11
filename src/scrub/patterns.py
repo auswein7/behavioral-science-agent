@@ -30,13 +30,21 @@ CAPITALIZED_WORD_RE = re.compile(r"\b[A-Z][a-zA-Z]*\b")
 # later line: without the prefix class on \A, a file opening with "# Heading"
 # left the first word looking mid-sentence, so a canonical title tripped
 # likely_name while the identical heading on line 2 did not.
+# A quoted CSV field opening ("...,"We are..." or the file's first field) is a
+# boundary too: the utterance table is gated as the serialized CSV, and every
+# utterance, prior_utterance and nonverbal_notes field starts a sentence. Run 4's
+# table produced 14 likely_name findings that were all field-initial words or
+# the low_confidence column's boolean literal.
 SENTENCE_INITIAL_RE = re.compile(
-    r"(?:\A[\s>#*_\-]*|[.!?]['\")*_\]]*\s+|\n[\s>#*_\-]*|>\s+|:\s+)['\"(*_\[]*([A-Z][a-zA-Z]*)"
+    r"(?:\A[\s>#*_\-]*|[.!?]['\")*_\]]*\s+|\n[\s>#*_\-]*|>\s+|:\s+|(?:\A|,)\")['\"(*_\[]*([A-Z][a-zA-Z]*)"
 )
-# "na" is the OSU prior-field convention in delivered tables; "i" is the English
+# "na" is the OSU prior-field convention in delivered tables; "true" and "false"
+# are the low_confidence column's boolean literals; "i" is the English
 # first-person pronoun, capitalized at any position; the last four are the
 # name-scrub's own replacement tokens, which must not re-trigger the gate.
-NAME_ALLOWLIST = {"scene", "speaker", "na", "i", "name", "org", "place", "group"}
+NAME_ALLOWLIST = {
+    "scene", "speaker", "na", "true", "false", "i", "name", "org", "place", "group",
+}
 
 
 def iter_findings(text: str) -> Iterator[tuple[str, str, int]]:

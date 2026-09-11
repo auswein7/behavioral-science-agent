@@ -1,0 +1,11 @@
+{
+  "schema_version": "0.1",
+  "session_id": "Attenborough",
+  "source_class": "public_domain",
+  "task_name": "attenborough_monologue",
+  "group_size": 1,
+  "expected_speaker_count": 1,
+  "speaker_roles": null,
+  "protocol_ref": null,
+  "notes": "Public YouTube clip, one on-camera speaker addressing the camera. Kept as the anonymization-failure test case (a globally recognizable speaker). First gate-clean artifact (run 4, 2026-09-10); used for the cross-provider coder parity check."
+}

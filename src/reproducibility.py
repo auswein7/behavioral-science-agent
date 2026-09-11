@@ -77,7 +77,11 @@ MEASUREMENTS = MappingProxyType(
                 "2026-09-08 (fairlib-agent, live API): paired calls with seed 1234 "
                 "gave different text at temperature 1.0 and at temperature 0.0; one "
                 "counterexample settles it. A parity check on this model needs "
-                "repeated sampling with a dispersion estimate."
+                "repeated sampling with a dispersion estimate. 2026-09-11 (fork "
+                "coder, Attenborough, 6 rows x 3 repeats, temperature 0, no seed): "
+                "all 36 code cells identical across repeats while the reply text "
+                "varied - 1 and 2 rows needed a planner retry on the second and "
+                "third pass for an off-shape reply, none on the first."
             ),
         ),
     }
