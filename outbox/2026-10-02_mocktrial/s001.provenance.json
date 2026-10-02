@@ -1,0 +1,96 @@
+{
+  "schema_version": "0.1",
+  "session_id": "s001",
+  "run_id": "run5_mocktrial",
+  "started": "2026-10-02T18:50:38+00:00",
+  "finished": "2026-10-02T19:25:22+00:00",
+  "host": "env-austin",
+  "input_video_sha256": "a6da259e4b070c9e5fb95c4d84813a82d190de5defff135369164fde1e123fb3",
+  "config": {
+    "schema_version": "0.1",
+    "transcription": {
+      "whisper_model": "large-v2",
+      "device": "cuda",
+      "compute_type": "float16",
+      "batch_size": 16,
+      "language": "en",
+      "num_speakers": null,
+      "min_speakers": null,
+      "max_speakers": null
+    },
+    "tone": {
+      "tone_model": "iic/emotion2vec_plus_large"
+    },
+    "captioning": {
+      "caption_model": "qwen3-vl-instruct-16k",
+      "backend": "ollama",
+      "fps": 1.0,
+      "context_captions": 1,
+      "max_dimension": 1280,
+      "speech_frame_offset": 0.5,
+      "burst_frames": 2,
+      "burst_spacing": 0.2
+    },
+    "screenplay": {
+      "ornith_model": "ornith-1.5-255k",
+      "backend": "ollama",
+      "num_ctx": 262144
+    },
+    "sampling": {
+      "temperature": 0.0,
+      "seed": null
+    },
+    "prompt_versions": {
+      "ANONYMIZATION_RULES": "sha256:b9227f076ee5f10c",
+      "CAPTION_ANONYMIZATION_RULES": "sha256:48d855f7bef8c622",
+      "FIRST_FRAME_PROMPT": "sha256:753049589777d3eb",
+      "CHANGE_PROMPT": "sha256:a6dda43b8ec4227d",
+      "CODER_ROLE_PROMPT": "sha256:356b1dbc1bf06229"
+    }
+  },
+  "model_digests": {
+    "ornith-1.5-255k:latest": "04dc323f1795d408aad45d9746a02f0f8234ef17a12642f9ba68b7335ebe6dea",
+    "qwen3-vl-instruct-16k:latest": "b34cd450e5f6f0f1c4f4b0098cffa299b7923bccdf3ce60f8115bd289f0c2bf6"
+  },
+  "prompt_versions": {
+    "ANONYMIZATION_RULES": "sha256:b9227f076ee5f10c",
+    "CAPTION_ANONYMIZATION_RULES": "sha256:48d855f7bef8c622",
+    "FIRST_FRAME_PROMPT": "sha256:753049589777d3eb",
+    "CHANGE_PROMPT": "sha256:a6dda43b8ec4227d",
+    "CODER_ROLE_PROMPT": "sha256:356b1dbc1bf06229"
+  },
+  "software": {
+    "python": "3.12.3",
+    "whisperx": "3.8.6",
+    "funasr": "1.4.16",
+    "spacy": "3.8.16",
+    "ollama": "0.6.3",
+    "pydantic": "2.11.7",
+    "av": "19.0.0",
+    "fair-llm": "0.6.3"
+  },
+  "stage_timings": {
+    "scrub_names": 0.83,
+    "caption": 792.62,
+    "merge": 0.0,
+    "screenplay": 1290.6
+  },
+  "stage_usage": {
+    "caption": {
+      "calls": 458,
+      "calls_reporting": 458,
+      "calls_failed": 0,
+      "prompt_tokens": 730611,
+      "completion_tokens": 26489,
+      "source": "seam_wrapper"
+    },
+    "screenplay": {
+      "calls": 1,
+      "calls_reporting": 1,
+      "calls_failed": 0,
+      "prompt_tokens": 69185,
+      "completion_tokens": 72665,
+      "source": "seam_wrapper"
+    }
+  }
+}

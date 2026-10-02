@@ -1,0 +1,13 @@
+{
+  "schema_version": "0.1",
+  "session_id": "s001",
+  "run_id": "run5_mocktrial",
+  "artifact": "MockTrial_trimmed.screenplay.md",
+  "findings_by_category": {
+    "appearance": 0,
+    "likely_name": 0
+  },
+  "resolution": "clean",
+  "reviewer": null,
+  "decided": "2026-10-02T19:25:23+00:00"
+}

@@ -1,0 +1,63 @@
+{
+  "schema_version": "0.1",
+  "session_id": "s001",
+  "started": "2026-10-02T19:35:57.629029+00:00",
+  "finished": "2026-10-02T19:41:31.130630+00:00",
+  "host": "env-austin",
+  "config": {
+    "coder_model": "qwen2.5:14b",
+    "provider": "ollama",
+    "coder_id": "fairlib_local",
+    "context_utterances": 5,
+    "max_retries": 2,
+    "max_steps": 3,
+    "num_ctx": 8192,
+    "max_tokens": null,
+    "temperature": 0.0,
+    "seed": null,
+    "codebook_path": null
+  },
+  "codebook_version": "placeholder-2026-09-02",
+  "codebook_digest": "sha256:d87d0c5fc439eb47",
+  "prompt_versions": {
+    "CODER_ROLE_PROMPT": "sha256:356b1dbc1bf06229"
+  },
+  "framework": {
+    "fairlib_version": "0.6.3",
+    "planner_prompt_digest": "5b04e5b98f251fa24c0587ffbb877a10",
+    "planner_prompt_chars": "2882"
+  },
+  "coder_model": "qwen2.5:14b",
+  "egress": {
+    "provider": "ollama",
+    "model": "qwen2.5:14b",
+    "remote": false,
+    "destination": null,
+    "session_id": "s001",
+    "source_class": "public_domain",
+    "scrub_artifact": null,
+    "scrub_resolution": null,
+    "decided": "2026-10-02T19:35:57.516847+00:00"
+  },
+  "reproducibility": {
+    "provider": "ollama",
+    "model": "qwen2.5:14b",
+    "seed": null,
+    "temperature": 0.0,
+    "status": "measured_not_reproducible",
+    "evidence": "2026-09-10: 5 coder calls, identical code, planner prompt digest, seed 1234 and temperature 0, gave 1273, 1256, 1254 and 1252 completion tokens at different times and moved 1-2 of 5 code cells. num_ctx changes codes (4096 vs 8192 differ; unset loads 32768 on Ollama 0.33.1), and even at a fixed num_ctx the server's state moved output. Stable within one load and request sequence (2026-09-08: 0/36 unstable cells over 3 back-to-back passes; num_ctx 4096 identical across a forced reload), and OSU session S1T1 (87 coded rows) was identical across two loads at num_ctx 32768 and 8192, so the variation is intermittent, not constant. Repeat runs for any parity figure."
+  },
+  "stage_timings": {
+    "coder": 333.5
+  },
+  "stage_usage": {
+    "coder": {
+      "calls": 79,
+      "calls_reporting": 79,
+      "calls_failed": 0,
+      "prompt_tokens": 88329,
+      "completion_tokens": 19737,
+      "source": "fairlib_events"
+    }
+  }
+}
