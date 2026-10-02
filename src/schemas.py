@@ -275,7 +275,7 @@ class NameReplacement(_Internal):
 class GateFinding(_Internal):
     """One internal gate finding (DATA_MODEL 4.4 internal form). Tier B: carries excerpts."""
 
-    category: Literal["gendered", "appearance", "likely_name"]
+    category: Literal["appearance", "likely_name"]
     term: str
     position: int
     excerpt: str

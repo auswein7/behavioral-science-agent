@@ -4,10 +4,9 @@ scrub_check and the enforcing gate. Regex only, no models."""
 import re
 from collections.abc import Iterator
 
-GENDERED_RE = re.compile(
-    r"\b(he|she|him|her|his|hers|man|woman|men|women|boy|girl|guy|lady|gentleman)\b",
-    re.IGNORECASE,
-)
+# No gendered-language category: pronouns and gender words are acceptable content
+# (Shane's 2026-09-16 ruling, LEAK_TAXONOMY channel 4). The caption and screenplay
+# prompts still forbid gendered words for grounding; the gate does not enforce it.
 
 APPEARANCE_RE = re.compile(
     r"\b(uniform|wearing|wears|dressed|shirt|dress|jacket|coat|hair|hat|haircut|hairstyle|"
@@ -49,10 +48,8 @@ NAME_ALLOWLIST = {
 
 def iter_findings(text: str) -> Iterator[tuple[str, str, int]]:
     """Yield (category, matched term, character position) for every individual
-    match: "gendered", "appearance", and "likely_name" (capitalized words with
-    the sentence-initial/speaker-tag/allowlist exclusions applied)."""
-    for match in GENDERED_RE.finditer(text):
-        yield "gendered", match.group(0), match.start()
+    match: "appearance" and "likely_name" (capitalized words with the
+    sentence-initial/speaker-tag/allowlist exclusions applied)."""
     for match in APPEARANCE_RE.finditer(text):
         yield "appearance", match.group(0), match.start()
 

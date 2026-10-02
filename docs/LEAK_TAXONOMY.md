@@ -16,10 +16,10 @@ instructor name - the bar this taxonomy sets is deliberately higher).
 | 1 | Spoken name | run 1: "Trump" (misheard) in dialogue; OSU sample: instructor name | deterministic NER scrub, [NAME] token, before Ornith/table | gate `likely_name` | NER misses (sm model mistags); no recall measurement yet |
 | 2 | On-screen text name | whiteboard names visible in run-1 frames | prompt rule (held in run 1: THEMIS logo, whiteboard never captioned) | gate `likely_name` | prompt compliance is probabilistic; no OCR-based check |
 | 3 | Recognized person | Attenborough sample named the presenter | prompt rule | gate `likely_name` | VLM can name a public figure from appearance alone; re-test on Attenborough after prompt fixes |
-| 4 | Gender | run 1 captions: "her", "man", "woman" | prompt rule (leaks: 94 captions in run 1) | gate `gendered` | caption model does not comply reliably; needs prompt fix or redaction stage |
+| 4 | Gender | run 1 captions: "her", "man", "woman" | prompt rule, kept for grounding | none by decision | RULED 2026-09-16 (Shane): pronouns are acceptable content; the gate `gendered` category was removed |
 | 5 | Appearance (clothing, hair, build) | run 1: "light blue shirt" reached the final screenplay | prompt rule (leaks: 94x "shirt") | gate `appearance` | same as 4; the worst channel by volume in run 1 |
 | 6 | Age | "elderly", "young" | prompt rule | none | add regex category to the gate |
-| 7 | Ethnicity | OSU's own labels encode it ("White24", "Latina23") | prompt rule; our labels are SPEAKER_NN by design | none | add regex category (NORP entity + word list) |
+| 7 | Ethnicity | OSU's own labels encode it ("White24", "Latina23") | prompt rule; our labels are SPEAKER_NN by design | none | RULED 2026-09-16 (Shane): demographics are acceptable content; no gate category planned |
 | 8 | Uniform / insignia / rank | cadet recordings: rank on uniform, name tapes | prompt rule ("uniform" in appearance regex) | gate `appearance` (partial) | cadet-specific: rank words, unit names; extend before P4 |
 | 9 | Location / organization cues | run 1 dialogue: "Connecticut", "insurance capital of the world" (= Hartford) | NER scrub [PLACE]/[ORG] tokens | gate `likely_name` | multi-word cues without proper nouns ("this town is the insurance capital...") pass NER |
 | 10 | Voice-print proxy (verbatim idiolect) | distinctive catchphrases, verbatim garble | none - dialogue ships verbatim by design | none | open question for the team: is verbatim text an acceptable channel? OSU coding needs it |

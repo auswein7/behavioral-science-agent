@@ -232,7 +232,7 @@ deliberately absent, because a report quoting a leak would itself leak.
 | schema_version | str | |
 | session_id, run_id | str | |
 | artifact | str | which deliverable this gate decision covers |
-| findings_by_category | dict[str, int] | e.g. `{"appearance": 1, "gendered": 0}` |
+| findings_by_category | dict[str, int] | e.g. `{"appearance": 1, "likely_name": 0}` |
 | resolution | str | `clean` / `cleared_by_review` / `redacted` / `blocked` |
 | reviewer | str? | role, not name, when a human cleared it |
 | decided | str | ISO 8601 UTC |

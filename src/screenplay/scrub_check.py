@@ -1,7 +1,7 @@
 """Warn-only mechanical scan for likely de-identification leaks in generated text.
 
 Prompt-engineered anonymization (src/prompts.py's ANONYMIZATION_RULES) is probabilistic —
-a model can still slip and mention an appearance detail, a gender, or a name despite being
+a model can still slip and mention an appearance detail or a name despite being
 told not to. This is a cheap, non-LLM backstop: a regex spot-check over already-generated
 text, meant to flag likely slips for a human to review. It is NOT a guarantee and NOT a
 filter — it never raises, blocks, or modifies the text it scans. The "likely name" check in
@@ -27,19 +27,14 @@ def scrub_check(text: str, label: str) -> list[str]:
     """
     warnings = []
 
-    gendered: set[str] = set()
     appearance: set[str] = set()
     names: set[str] = set()
     for category, term, _position in iter_findings(text):
-        if category == "gendered":
-            gendered.add(term.lower())
-        elif category == "appearance":
+        if category == "appearance":
             appearance.add(term.lower())
         else:
             names.add(term)
 
-    if gendered:
-        warnings.append(f"[{label}] possible gendered language: {', '.join(sorted(gendered))}")
     if appearance:
         warnings.append(f"[{label}] possible appearance description: {', '.join(sorted(appearance))}")
     if names:

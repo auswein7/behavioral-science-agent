@@ -35,9 +35,15 @@ class TestEvaluateGate:
         result = gate(LEAKY_TEXT)
         assert result.blocked
         categories = {f.category for f in result.findings}
-        assert categories == {"gendered", "appearance", "likely_name"}
+        assert categories == {"appearance", "likely_name"}
         with pytest.raises(GateBlockedError):
             require_pass(result)
+
+    def test_pronouns_and_gender_words_pass(self):
+        # Shane's 2026-09-16 ruling: pronouns are acceptable content.
+        result = gate("SPEAKER_01 says she agrees with him; the woman nods.")
+        assert result.report.resolution == "clean"
+        assert "gendered" not in result.report.findings_by_category
 
     def test_counts_match_findings(self):
         result = gate(LEAKY_TEXT)

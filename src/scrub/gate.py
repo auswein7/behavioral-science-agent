@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_FINDINGS_DIR = Path(__file__).resolve().parents[2] / "data" / "gate"
 
-CATEGORIES = ("gendered", "appearance", "likely_name")
+CATEGORIES = ("appearance", "likely_name")
 EXCERPT_WINDOW = 40
 
 
